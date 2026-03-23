@@ -1,0 +1,97 @@
+name: Build Binaries
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        required: true
+        type: string
+    outputs:
+      bootstrap-commit-sha:
+        description: 'SHA of commit with updated verify-checksums.sha256'
+        value: ${{ jobs.aggregate.outputs.commit-sha }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { goos: linux,  goarch: amd64, runs-on: ubuntu-latest }
+          - { goos: darwin, goarch: arm64, runs-on: macos-latest  }
+          - { goos: darwin, goarch: amd64, runs-on: macos-13      }
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491  # v5.0.0
+        with:
+          go-version: '1.22'
+
+      - name: Build binaries
+        run: |
+          PROGRAMS="android-build android-sign android-upload ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums"
+          for program in $PROGRAMS; do
+            CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+              go build -o ${program}-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/$program
+          done
+
+      - name: Generate checksums
+        run: |
+          for f in *-${{ matrix.goos }}-${{ matrix.goarch }}; do
+            echo "$(openssl dgst -sha256 -r "$f" | awk '{print $1}')  $f"
+          done >> checksums-${{ matrix.goos }}-${{ matrix.goarch }}.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3  # v4.3.1
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            *-${{ matrix.goos }}-${{ matrix.goarch }}
+            checksums-${{ matrix.goos }}-${{ matrix.goarch }}.txt
+
+  aggregate:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      commit-sha: ${{ steps.commit.outputs.commit-sha }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@87c55149d96e628cc2ef7e6fc2aab372015aec85  # v4.1.3
+        with:
+          path: artifacts/
+
+      - name: Merge checksums and prepare release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-assets
+          # Collect all binaries and checksums
+          find artifacts/ -type f \( -name '*-linux-*' -o -name '*-darwin-*' \) | xargs -I{} cp {} release-assets/
+          # Merge partial checksum files into one
+          cat release-assets/checksums-*.txt > release-assets/checksums.txt
+          # Remove partial files from upload
+          rm release-assets/checksums-*.txt
+          # Generate verify-checksums.sha256 (only verify-checksums-* lines)
+          grep "verify-checksums-" release-assets/checksums.txt > verify-checksums.sha256
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd release-assets
+          gh release upload ${{ inputs.release-tag }} * --repo ${{ github.repository }}
+
+      - name: Commit verify-checksums.sha256
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add verify-checksums.sha256
+          git commit -m "chore: update verify-checksums hashes for ${{ inputs.release-tag }}"
+          git push origin HEAD:main
+          echo "commit-sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
