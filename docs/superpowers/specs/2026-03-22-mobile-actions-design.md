@@ -1,7 +1,7 @@
 # mobile-actions Design Spec
 
 **Date:** 2026-03-22
-**Status:** Draft
+**Status:** Approved
 
 ## Overview
 
