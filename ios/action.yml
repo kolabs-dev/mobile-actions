@@ -1,0 +1,136 @@
+name: 'mobile-actions/ios'
+description: 'Build, sign, and upload an iOS app to App Store Connect or TestFlight'
+
+inputs:
+  app-path:
+    description: 'Path to the iOS app directory'
+    default: '.'
+  scheme:
+    description: 'Xcode scheme name'
+    required: true
+  workspace:
+    description: 'Path to .xcworkspace (auto-detected if not set)'
+    required: false
+  bundle-id:
+    description: 'App bundle identifier'
+    required: true
+  team-id:
+    description: 'Apple Developer Team ID (10-character alphanumeric)'
+    required: true
+  xcode-version:
+    description: 'Xcode version (must be pre-installed on runner)'
+    default: '16.2'
+  certificate:
+    description: 'Base64-encoded .p12 certificate'
+    required: true
+  certificate-password:
+    description: 'P12 password'
+    required: true
+  provisioning-profile:
+    description: 'Base64-encoded .mobileprovision'
+    required: true
+  app-store-connect-key:
+    description: 'Base64-encoded .p8 API key'
+    required: true
+  app-store-connect-key-id:
+    description: 'App Store Connect key ID'
+    required: true
+  app-store-connect-issuer-id:
+    description: 'App Store Connect issuer ID'
+    required: true
+  destination:
+    description: "'testflight' or 'app-store'"
+    default: 'testflight'
+
+outputs:
+  artifact-path:
+    description: 'Path to the exported .ipa'
+    value: ${{ steps.build.outputs.artifact-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download mobile-actions binaries
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        RAW_ARCH=$(uname -m)
+        ARCH=$( [ "$RAW_ARCH" = "x86_64" ] && echo "amd64" || echo "arm64" )
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        VERSION=$GITHUB_ACTION_REF
+        DEST=$RUNNER_TEMP/mobile-actions-bin
+        mkdir -p $DEST
+
+        gh release download "$VERSION" \
+          --repo your-org/mobile-actions \
+          --pattern "verify-checksums-${OS}-${ARCH}" \
+          --pattern "checksums.txt" \
+          --dir $DEST
+
+        HASH_FILE=${{ github.action_path }}/verify-checksums.sha256
+        cd $DEST
+        if [ "$OS" = "linux" ]; then
+          grep "verify-checksums-${OS}-${ARCH}" "$HASH_FILE" | sha256sum --check
+        else
+          grep "verify-checksums-${OS}-${ARCH}" "$HASH_FILE" | shasum -a 256 --check
+        fi
+        chmod +x verify-checksums-${OS}-${ARCH}
+
+        gh release download "$VERSION" \
+          --repo your-org/mobile-actions \
+          --pattern "*-${OS}-${ARCH}" \
+          --dir $DEST
+
+        ./verify-checksums-${OS}-${ARCH} --file checksums.txt --dir $DEST
+        chmod +x $DEST/*-${OS}-${ARCH}
+        echo "MOBILE_ACTIONS_BIN=$DEST" >> $GITHUB_ENV
+        echo "MOBILE_ACTIONS_OS_ARCH=${OS}-${ARCH}" >> $GITHUB_ENV
+
+    - name: Select Xcode
+      shell: bash
+      run: |
+        XCODE_PATH="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
+        if [ ! -d "$XCODE_PATH" ]; then
+          echo "::error::Xcode ${{ inputs.xcode-version }} not found at $XCODE_PATH"
+          echo "Available Xcode installations:"
+          ls /Applications/Xcode*.app 2>/dev/null || echo "  (none found)"
+          exit 1
+        fi
+        sudo xcode-select -s "$XCODE_PATH"
+        xcodebuild -version
+
+    - name: Setup signing
+      shell: bash
+      env:
+        INPUT_CERTIFICATE: ${{ inputs.certificate }}
+        INPUT_CERTIFICATE_PASSWORD: ${{ inputs.certificate-password }}
+        INPUT_PROVISIONING_PROFILE: ${{ inputs.provisioning-profile }}
+      run: $MOBILE_ACTIONS_BIN/ios-setup-signing-$MOBILE_ACTIONS_OS_ARCH
+
+    - name: Build and export IPA
+      id: build
+      shell: bash
+      env:
+        INPUT_APP_PATH: ${{ inputs.app-path }}
+        INPUT_SCHEME: ${{ inputs.scheme }}
+        INPUT_WORKSPACE: ${{ inputs.workspace }}
+        INPUT_BUNDLE_ID: ${{ inputs.bundle-id }}
+        INPUT_TEAM_ID: ${{ inputs.team-id }}
+        INPUT_DESTINATION: ${{ inputs.destination }}
+      run: $MOBILE_ACTIONS_BIN/ios-build-$MOBILE_ACTIONS_OS_ARCH
+
+    - name: Upload to App Store Connect
+      shell: bash
+      env:
+        INPUT_APP_STORE_CONNECT_KEY: ${{ inputs.app-store-connect-key }}
+        INPUT_APP_STORE_CONNECT_KEY_ID: ${{ inputs.app-store-connect-key-id }}
+        INPUT_APP_STORE_CONNECT_ISSUER_ID: ${{ inputs.app-store-connect-issuer-id }}
+        INPUT_XCODE_VERSION: ${{ inputs.xcode-version }}
+        INPUT_ARTIFACT_PATH: ${{ steps.build.outputs.artifact-path }}
+      run: $MOBILE_ACTIONS_BIN/ios-upload-$MOBILE_ACTIONS_OS_ARCH
+
+    - name: Teardown signing
+      if: always()
+      shell: bash
+      run: $MOBILE_ACTIONS_BIN/ios-teardown-signing-$MOBILE_ACTIONS_OS_ARCH
