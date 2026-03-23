@@ -19,7 +19,7 @@ const exportOptionsTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>method</key><string>app-store</string>
+  <key>method</key><string>{{.Method}}</string>
   <key>teamID</key><string>{{.TeamID}}</string>
   <key>signingStyle</key><string>manual</string>
   <key>provisioningProfiles</key>
@@ -44,11 +44,16 @@ func run() error {
 	scheme := os.Getenv("INPUT_SCHEME")
 	bundleID := os.Getenv("INPUT_BUNDLE_ID")
 	teamID := os.Getenv("INPUT_TEAM_ID")
+	destination := envOrDefault("INPUT_DESTINATION", "testflight")
 	runnerTemp := os.Getenv("RUNNER_TEMP")
 
 	if scheme == "" || bundleID == "" || teamID == "" {
 		return fmt.Errorf("INPUT_SCHEME, INPUT_BUNDLE_ID, and INPUT_TEAM_ID are required")
 	}
+	if destination != "testflight" && destination != "app-store" {
+		return fmt.Errorf("INPUT_DESTINATION must be 'testflight' or 'app-store', got %q", destination)
+	}
+	fmt.Printf("destination: %s\n", destination)
 
 	// Auto-detect workspace
 	if workspace == "" {
@@ -71,7 +76,7 @@ func run() error {
 		return err
 	}
 	exportOptionsPath := filepath.Join(exportDir, "ExportOptions.plist")
-	if err := writeExportOptions(exportOptionsPath, teamID, bundleID, profileUUID); err != nil {
+	if err := writeExportOptions(exportOptionsPath, teamID, bundleID, profileUUID, "app-store"); err != nil {
 		return fmt.Errorf("write ExportOptions.plist: %w", err)
 	}
 
@@ -164,7 +169,7 @@ func provisioningProfileUUID(runnerTemp string) (string, error) {
 	return uuid, nil
 }
 
-func writeExportOptions(path, teamID, bundleID, profileUUID string) error {
+func writeExportOptions(path, teamID, bundleID, profileUUID, method string) error {
 	tmpl := template.Must(template.New("export").Parse(exportOptionsTmpl))
 	f, err := os.Create(path)
 	if err != nil {
@@ -175,6 +180,7 @@ func writeExportOptions(path, teamID, bundleID, profileUUID string) error {
 		"TeamID":      teamID,
 		"BundleID":    bundleID,
 		"ProfileUUID": profileUUID,
+		"Method":      method,
 	})
 }
 
