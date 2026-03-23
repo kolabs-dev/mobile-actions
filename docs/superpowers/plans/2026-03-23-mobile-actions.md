@@ -1277,7 +1277,6 @@ Reads `INPUT_CERTIFICATE` (base64 p12), `INPUT_CERTIFICATE_PASSWORD`, `INPUT_PRO
 package main
 
 import (
-	"crypto/rand"
 	cryptorand "crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -1292,8 +1291,6 @@ import (
 	intexec "github.com/your-org/mobile-actions/internal/exec"
 	intsecrets "github.com/your-org/mobile-actions/internal/secrets"
 )
-
-var _ = rand.Reader // ensure crypto/rand is used
 
 type SigningState struct {
 	KeychainName            string   `json:"keychain_name"`
