@@ -1,0 +1,4 @@
+github.com/Masterminds/semver/v3 v3.2.1 h1:RN9w6+7QlariP/Yh2a86a2ePRC7fQsRks1oPSsqhAA=
+github.com/Masterminds/semver/v3 v3.2.1/go.mod h1:qvl/7zhW3nngYb5+80sSMF+FG/i/i1i22WKjV6sZc=
+howett.net/plist v1.0.1 h1:7QkGVKEayMsLBq5uIzb8fUmhjd/u0gW9J5xvW9swYs=
+howett.net/plist v1.0.1/go.mod h1:WMnvbVKwLh6NP7j4K1yvM6kKwlbPeXPUKN8i7F8lE=
