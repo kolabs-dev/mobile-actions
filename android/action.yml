@@ -1,0 +1,123 @@
+name: 'mobile-actions/android'
+description: 'Build, sign, and upload an Android app to Google Play Store'
+
+inputs:
+  app-path:
+    description: 'Path to the Android app directory'
+    default: '.'
+  build-type:
+    description: "'aab' or 'apk'"
+    default: 'aab'
+  gradle-task:
+    description: 'Override Gradle task (auto-detected if not set)'
+    required: false
+  java-version:
+    description: 'JDK version'
+    default: '17'
+  keystore:
+    description: 'Base64-encoded .jks keystore'
+    required: true
+  keystore-password:
+    description: 'Keystore password'
+    required: true
+  key-alias:
+    description: 'Key alias'
+    required: true
+  key-password:
+    description: 'Key password'
+    required: true
+  service-account-json:
+    description: 'Base64-encoded Google service account JSON'
+    required: true
+  package-name:
+    description: 'App package name (e.g. com.myapp)'
+    required: true
+  version-code:
+    description: 'Integer version code'
+    required: true
+  track:
+    description: "Play Store track: 'internal', 'alpha', 'beta', 'production'"
+    default: 'internal'
+
+outputs:
+  artifact-path:
+    description: 'Path to the signed artifact'
+    value: ${{ steps.sign.outputs.artifact-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download mobile-actions binaries
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        RAW_ARCH=$(uname -m)
+        ARCH=$( [ "$RAW_ARCH" = "x86_64" ] && echo "amd64" || echo "arm64" )
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        VERSION=$GITHUB_ACTION_REF
+        DEST=$RUNNER_TEMP/mobile-actions-bin
+        mkdir -p $DEST
+
+        gh release download "$VERSION" \
+          --repo your-org/mobile-actions \
+          --pattern "verify-checksums-${OS}-${ARCH}" \
+          --pattern "checksums.txt" \
+          --dir $DEST
+
+        HASH_FILE=${{ github.action_path }}/verify-checksums.sha256
+        cd $DEST
+        if [ "$OS" = "linux" ]; then
+          grep "verify-checksums-${OS}-${ARCH}" "$HASH_FILE" | sha256sum --check
+        else
+          grep "verify-checksums-${OS}-${ARCH}" "$HASH_FILE" | shasum -a 256 --check
+        fi
+        chmod +x verify-checksums-${OS}-${ARCH}
+
+        gh release download "$VERSION" \
+          --repo your-org/mobile-actions \
+          --pattern "*-${OS}-${ARCH}" \
+          --dir $DEST
+
+        ./verify-checksums-${OS}-${ARCH} --file checksums.txt --dir $DEST
+        chmod +x $DEST/*-${OS}-${ARCH}
+        echo "MOBILE_ACTIONS_BIN=$DEST" >> $GITHUB_ENV
+        echo "MOBILE_ACTIONS_OS_ARCH=${OS}-${ARCH}" >> $GITHUB_ENV
+
+    - name: Setup Java
+      uses: actions/setup-java@6a0805fcefea3d4657a47ac4c165951e33482018  # v4.2.2
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: temurin
+
+    - name: Build (Gradle)
+      id: build
+      shell: bash
+      env:
+        INPUT_APP_PATH: ${{ inputs.app-path }}
+        INPUT_BUILD_TYPE: ${{ inputs.build-type }}
+        INPUT_GRADLE_TASK: ${{ inputs.gradle-task }}
+      run: $MOBILE_ACTIONS_BIN/android-build-$MOBILE_ACTIONS_OS_ARCH
+
+    - name: Sign
+      id: sign
+      shell: bash
+      env:
+        INPUT_UNSIGNED_ARTIFACT_PATH: ${{ steps.build.outputs.unsigned-artifact-path }}
+        INPUT_KEYSTORE: ${{ inputs.keystore }}
+        INPUT_KEYSTORE_PASSWORD: ${{ inputs.keystore-password }}
+        INPUT_KEY_ALIAS: ${{ inputs.key-alias }}
+        INPUT_KEY_PASSWORD: ${{ inputs.key-password }}
+        INPUT_BUILD_TYPE: ${{ inputs.build-type }}
+      run: $MOBILE_ACTIONS_BIN/android-sign-$MOBILE_ACTIONS_OS_ARCH
+
+    - name: Upload to Play Store
+      shell: bash
+      env:
+        INPUT_SERVICE_ACCOUNT_JSON: ${{ inputs.service-account-json }}
+        INPUT_PACKAGE_NAME: ${{ inputs.package-name }}
+        INPUT_VERSION_CODE: ${{ inputs.version-code }}
+        INPUT_TRACK: ${{ inputs.track }}
+        INPUT_BUILD_TYPE: ${{ inputs.build-type }}
+        INPUT_ARTIFACT_PATH: ${{ steps.sign.outputs.artifact-path }}
+      run: $MOBILE_ACTIONS_BIN/android-upload-$MOBILE_ACTIONS_OS_ARCH
