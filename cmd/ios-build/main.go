@@ -11,8 +11,8 @@ import (
 
 	"howett.net/plist"
 
-	"github.com/your-org/mobile-actions/internal/actions"
-	intexec "github.com/your-org/mobile-actions/internal/exec"
+	"github.com/kolabs-dev/mobile-actions/internal/actions"
+	intexec "github.com/kolabs-dev/mobile-actions/internal/exec"
 )
 
 const exportOptionsTmpl = `<?xml version="1.0" encoding="UTF-8"?>

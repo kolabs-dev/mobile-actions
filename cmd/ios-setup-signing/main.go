@@ -12,9 +12,9 @@ import (
 
 	"howett.net/plist"
 
-	"github.com/your-org/mobile-actions/internal/actions"
-	intexec "github.com/your-org/mobile-actions/internal/exec"
-	intsecrets "github.com/your-org/mobile-actions/internal/secrets"
+	"github.com/kolabs-dev/mobile-actions/internal/actions"
+	intexec "github.com/kolabs-dev/mobile-actions/internal/exec"
+	intsecrets "github.com/kolabs-dev/mobile-actions/internal/secrets"
 )
 
 type SigningState struct {

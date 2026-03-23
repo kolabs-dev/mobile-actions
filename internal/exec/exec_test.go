@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/your-org/mobile-actions/internal/exec"
+	"github.com/kolabs-dev/mobile-actions/internal/exec"
 )
 
 func TestRun_Success(t *testing.T) {

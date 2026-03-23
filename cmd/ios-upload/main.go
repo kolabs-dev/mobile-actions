@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/your-org/mobile-actions/internal/actions"
-	intexec "github.com/your-org/mobile-actions/internal/exec"
+	"github.com/kolabs-dev/mobile-actions/internal/actions"
+	intexec "github.com/kolabs-dev/mobile-actions/internal/exec"
 )
 
 var dryRun = flag.Bool("dry-run", false, "log what would be uploaded without actually uploading")

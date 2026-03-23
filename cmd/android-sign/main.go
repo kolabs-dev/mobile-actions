@@ -11,9 +11,9 @@ import (
 
 	semver "github.com/Masterminds/semver/v3"
 
-	"github.com/your-org/mobile-actions/internal/actions"
-	"github.com/your-org/mobile-actions/internal/exec"
-	"github.com/your-org/mobile-actions/internal/secrets"
+	"github.com/kolabs-dev/mobile-actions/internal/actions"
+	"github.com/kolabs-dev/mobile-actions/internal/exec"
+	"github.com/kolabs-dev/mobile-actions/internal/secrets"
 )
 
 func main() {

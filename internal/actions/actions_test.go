@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/your-org/mobile-actions/internal/actions"
+	"github.com/kolabs-dev/mobile-actions/internal/actions"
 )
 
 func TestSetOutput(t *testing.T) {

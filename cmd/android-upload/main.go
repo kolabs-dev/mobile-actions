@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/oauth2/google"
 
-	"github.com/your-org/mobile-actions/internal/actions"
-	"github.com/your-org/mobile-actions/internal/secrets"
+	"github.com/kolabs-dev/mobile-actions/internal/actions"
+	"github.com/kolabs-dev/mobile-actions/internal/secrets"
 )
 
 var dryRun = flag.Bool("dry-run", false, "log what would be uploaded without actually uploading")

@@ -60,7 +60,7 @@ runs:
         mkdir -p $DEST
 
         gh release download "$VERSION" \
-          --repo your-org/mobile-actions \
+          --repo kolabs-dev/mobile-actions \
           --pattern "verify-checksums-${OS}-${ARCH}" \
           --pattern "checksums.txt" \
           --dir $DEST
@@ -75,7 +75,7 @@ runs:
         chmod +x verify-checksums-${OS}-${ARCH}
 
         gh release download "$VERSION" \
-          --repo your-org/mobile-actions \
+          --repo kolabs-dev/mobile-actions \
           --pattern "*-${OS}-${ARCH}" \
           --dir $DEST
 

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/your-org/mobile-actions/internal/actions"
-	"github.com/your-org/mobile-actions/internal/exec"
+	"github.com/kolabs-dev/mobile-actions/internal/actions"
+	"github.com/kolabs-dev/mobile-actions/internal/exec"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/your-org/mobile-actions/internal/secrets"
+	"github.com/kolabs-dev/mobile-actions/internal/secrets"
 )
 
 func setupRunnerTemp(t *testing.T) {
