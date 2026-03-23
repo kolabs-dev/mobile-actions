@@ -1,0 +1,110 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491  # v5.0.0
+        with:
+          go-version: '1.22'
+      - name: Run unit tests
+        run: go test ./internal/... -v -count=1
+
+  integration-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491  # v5.0.0
+        with:
+          go-version: '1.22'
+
+      - uses: actions/setup-java@6a0805fcefea3d4657a47ac4c165951e33482018  # v4.2.2
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Build Go binaries
+        run: |
+          for program in android-build android-sign android-upload; do
+            CGO_ENABLED=0 go build -o /tmp/ma-bin/${program}-linux-amd64 ./cmd/$program
+          done
+
+      - name: Test android-build
+        env:
+          INPUT_APP_PATH: testdata/android
+          INPUT_BUILD_TYPE: aab
+          RUNNER_TEMP: /tmp/runner
+          GITHUB_OUTPUT: /tmp/github-output
+        run: /tmp/ma-bin/android-build-linux-amd64
+
+      - name: Test android-sign
+        env:
+          INPUT_KEYSTORE_PASSWORD: testpassword
+          INPUT_KEY_ALIAS: testkey
+          INPUT_KEY_PASSWORD: testpassword
+          INPUT_BUILD_TYPE: aab
+          RUNNER_TEMP: /tmp/runner
+          GITHUB_OUTPUT: /tmp/github-output-sign
+        run: |
+          # Read unsigned artifact path from previous step's GITHUB_OUTPUT file
+          UNSIGNED=$(grep '^unsigned-artifact-path=' /tmp/github-output | cut -d= -f2-)
+          export INPUT_UNSIGNED_ARTIFACT_PATH="$UNSIGNED"
+          export INPUT_KEYSTORE=$(base64 -w0 testdata/android/test.keystore)
+          /tmp/ma-bin/android-sign-linux-amd64
+
+      - name: Test android-upload (dry-run)
+        env:
+          INPUT_SERVICE_ACCOUNT_JSON: e30K  # base64("{}")
+          INPUT_PACKAGE_NAME: com.example.testapp
+          INPUT_VERSION_CODE: '1'
+          INPUT_TRACK: internal
+          INPUT_BUILD_TYPE: aab
+          INPUT_ARTIFACT_PATH: /tmp/runner/mobile-actions/signed/app-release.aab
+          RUNNER_TEMP: /tmp/runner
+        run: /tmp/ma-bin/android-upload-linux-amd64 --dry-run
+
+  integration-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491  # v5.0.0
+        with:
+          go-version: '1.22'
+
+      - name: Build Go binaries
+        run: |
+          for program in ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
+            CGO_ENABLED=0 go build -o /tmp/ma-bin/${program}-darwin-arm64 ./cmd/$program
+          done
+
+      - name: Test ios-build (stub project)
+        env:
+          INPUT_APP_PATH: testdata/ios
+          INPUT_SCHEME: TestApp
+          INPUT_BUNDLE_ID: com.example.testapp
+          INPUT_TEAM_ID: FAKETEAMID1
+          INPUT_DESTINATION: testflight
+          RUNNER_TEMP: /tmp/runner
+          GITHUB_OUTPUT: /tmp/github-output-ios
+        run: |
+          # Create a fake signing-state.json so ios-build can read the profile UUID
+          mkdir -p /tmp/runner/mobile-actions
+          echo '{"keychain_name":"test","original_keychains":[],"provisioning_profile_path":""}' \
+            > /tmp/runner/mobile-actions/signing-state.json
+          /tmp/ma-bin/ios-build-darwin-arm64 || true  # expected to fail without real credentials
+
+      - name: Test ios-upload (dry-run)
+        env:
+          INPUT_APP_STORE_CONNECT_KEY: dGVzdA==
+          INPUT_APP_STORE_CONNECT_KEY_ID: TESTKEYID
+          INPUT_APP_STORE_CONNECT_ISSUER_ID: test-issuer
+          INPUT_XCODE_VERSION: '16.2'
+          INPUT_ARTIFACT_PATH: /tmp/test.ipa
+          RUNNER_TEMP: /tmp/runner
+        run: /tmp/ma-bin/ios-upload-darwin-arm64 --dry-run
