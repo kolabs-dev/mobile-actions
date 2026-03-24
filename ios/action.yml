@@ -80,7 +80,8 @@ runs:
         gh release download "$VERSION" \
           --repo kolabs-dev/mobile-actions \
           --pattern "*-${OS}-${ARCH}" \
-          --dir $DEST
+          --dir $DEST \
+          --clobber
 
         ./verify-checksums-${OS}-${ARCH} --file checksums.txt --dir $DEST
         chmod +x $DEST/*-${OS}-${ARCH}
