@@ -1,0 +1,47 @@
+name: Auto Tag
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: auto-tag
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Compute and push next tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MAJOR=$(cat VERSION | tr -d '[:space:]')
+
+          # Find latest tag for this major, sorted by semver
+          LATEST=$(git tag -l "v${MAJOR}.*.*" | sort -V | tail -1)
+
+          if [ -z "$LATEST" ]; then
+            NEXT="v${MAJOR}.0.0"
+          else
+            # Parse minor and patch from vMAJOR.MINOR.PATCH
+            MINOR=$(echo "$LATEST" | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | cut -d. -f3)
+            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+
+          echo "Latest tag: ${LATEST:-none}"
+          echo "Next tag:   $NEXT"
+
+          git tag "$NEXT"
+          git push origin "$NEXT"
