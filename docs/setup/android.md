@@ -47,7 +47,7 @@ The `-alias` value you typed (`my-key-alias` in the example) is the `key-alias` 
 GitHub Secrets only accept text, so encode the binary `.jks` file as a Base64 string:
 
 ```bash
-base64 -i release.jks | tr -d '\n'
+base64 < release.jks | tr -d '\n'
 ```
 
 Copy the output — this is the value for the `ANDROID_KEYSTORE_BASE64` secret.
@@ -80,7 +80,7 @@ A service account is a non-human Google identity. Instead of logging in with you
 ### Encode the JSON key for GitHub Secrets
 
 ```bash
-base64 -i service-account.json | tr -d '\n'
+base64 < service-account.json | tr -d '\n'
 ```
 
 Copy the output — this is the value for the `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` secret.
@@ -109,6 +109,8 @@ version-code: ${{ github.run_number }}
 
 This means you never have to manage version codes manually.
 
+> ⚠️ `run_number` works as a starting point but resets if the workflow is recreated. If you've ever manually uploaded a build with a higher version code, the API will reject uploads with a lower number. Consider managing `versionCode` in `build.gradle` directly for production workflows.
+
 ### `track`
 
 The track controls where the build is published after upload:
@@ -120,7 +122,7 @@ The track controls where the build is published after upload:
 | `beta` | Open testing (anyone can opt in) |
 | `production` | Live on the Play Store for all users |
 
-Start with `internal` until you have confirmed the full pipeline works end to end.
+Start with `internal` until you have confirmed the full pipeline works end to end. The default value for `track` is `internal`, so you can omit this input once you understand the available options.
 
 **Official reference:** https://support.google.com/googleplay/android-developer/answer/9859348
 

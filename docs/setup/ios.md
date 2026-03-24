@@ -61,8 +61,8 @@ The action needs the certificate in `.p12` format (a bundle that includes both t
 GitHub Secrets only accept text, so encode both binary files as Base64 strings:
 
 ```bash
-base64 -i Certificates.p12 | tr -d '\n'
-base64 -i MyApp.mobileprovision | tr -d '\n'
+base64 < Certificates.p12 | tr -d '\n'
+base64 < MyApp.mobileprovision | tr -d '\n'
 ```
 
 Copy each output separately — they become the values for `IOS_CERTIFICATE_BASE64` and `IOS_PROVISIONING_PROFILE_BASE64`.
@@ -96,7 +96,7 @@ It is a JWT-based key that lets CI authenticate to App Store Connect without a p
 ### Encode the `.p8` key for GitHub Secrets
 
 ```bash
-base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
+base64 < AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
 ```
 
 Replace `XXXXXXXXXX` with your actual Key ID. Copy the output — this is the value for `APP_STORE_CONNECT_KEY_BASE64`.
