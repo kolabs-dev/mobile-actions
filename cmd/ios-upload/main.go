@@ -66,6 +66,12 @@ func run() error {
 }
 
 func resolveITMSTransporter() (string, error) {
+	// Try xcrun first — works across Xcode versions regardless of install path.
+	if path, err := intexec.RunOutput("xcrun", "-find", "iTMSTransporter"); err == nil && path != "" {
+		return path, nil
+	}
+
+	// Fall back to manual path resolution for older Xcode installations.
 	developerDir, err := intexec.RunOutput("xcode-select", "-p")
 	if err != nil {
 		return "", fmt.Errorf("xcode-select -p: %w", err)

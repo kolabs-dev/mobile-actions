@@ -35,6 +35,11 @@ jobs:
             CGO_ENABLED=0 go build -o /tmp/ma-bin/${program}-linux-amd64 ./cmd/$program
           done
 
+      - name: Download Gradle wrapper JAR
+        run: |
+          curl -fsSL -o testdata/android/gradle/wrapper/gradle-wrapper.jar \
+            "https://github.com/gradle/gradle/raw/refs/tags/v8.4.0/gradle/wrapper/gradle-wrapper.jar"
+
       - name: Test android-build
         env:
           INPUT_APP_PATH: testdata/android
