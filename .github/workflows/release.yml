@@ -67,8 +67,8 @@ jobs:
 
       - name: Push tag
         run: |
-          git tag ${{ needs.compute-tag.outputs.tag }}
-          git push origin ${{ needs.compute-tag.outputs.tag }}
+          git tag "${{ needs.compute-tag.outputs.tag }}"
+          git push origin "${{ needs.compute-tag.outputs.tag }}"
 
       - name: Create and publish GitHub Release
         env:
@@ -93,15 +93,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          MAJOR=$(echo ${{ needs.compute-tag.outputs.tag }} | cut -d. -f1)
+          MAJOR=$(echo "${{ needs.compute-tag.outputs.tag }}" | cut -d. -f1)
           BOOTSTRAP_SHA=$(git rev-parse HEAD)
 
-          git tag -f $MAJOR $BOOTSTRAP_SHA
-          git push -f origin $MAJOR
+          git tag -f "$MAJOR" "$BOOTSTRAP_SHA"
+          git push -f origin "$MAJOR"
 
-          gh release delete $MAJOR --yes --cleanup-tag 2>/dev/null || true
-          gh release create $MAJOR \
+          gh release delete "$MAJOR" --yes 2>/dev/null || true
+          gh release create "$MAJOR" \
             --title "$MAJOR (latest — ${{ needs.compute-tag.outputs.tag }})" \
             --notes "Always points to the latest $MAJOR.x.x release. Currently ${{ needs.compute-tag.outputs.tag }}."
 
-          gh release upload $MAJOR release-assets/*
+          gh release upload "$MAJOR" release-assets/*
