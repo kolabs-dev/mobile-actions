@@ -212,7 +212,7 @@ go vet ./...
 
 ### Releasing a new version
 
-Releases are fully automated. Every push to `main` that passes all tests triggers the auto-tag workflow, which reads the major version from the `VERSION` file, computes the next `vMAJOR.MINOR.PATCH` tag (incrementing patch), and pushes it. That tag then triggers the existing [Release workflow](.github/workflows/release.yml), which builds binaries, uploads release assets, updates the floating `vMAJOR` tag, and publishes the GitHub Release. If any test fails, no tag is created and no release is published.
+Releases are fully automated. Every push to `main` triggers the [Release workflow](.github/workflows/release.yml), which runs all tests, then reads the major version from the `VERSION` file, computes the next `vMAJOR.MINOR.PATCH` tag (incrementing patch), builds and uploads binaries for all platforms, updates the floating `vMAJOR` tag, and publishes the GitHub Release. If any test fails, no tag is created and no release is published.
 
 **Bumping the major version:**
 

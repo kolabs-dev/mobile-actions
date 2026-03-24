@@ -73,9 +73,15 @@ Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They 
 
 All Go programs read inputs from `INPUT_*` env vars (GitHub Actions convention). This allows direct CLI invocation for testing without needing an actual Actions runner.
 
+### CI workflows
+
+- **`test.yml`** — Runs unit tests and integration tests. Triggers on `pull_request`. Also supports `workflow_call` so it can be called as a reusable workflow.
+- **`release.yml`** — Triggers on `push: branches: [main]` (excluding commits that only touch `verify-checksums.sha256`). Calls `test.yml`, then computes and pushes the next semver tag, builds binaries for all platforms, creates and publishes the GitHub Release.
+- **`build-binaries.yml`** — Reusable `workflow_call` workflow. Builds binaries for `linux/amd64`, `darwin/arm64`, `darwin/amd64`, aggregates checksums, commits `verify-checksums.sha256` to main, and uploads assets to the release.
+
 ### Release flow
 
-Triggered by pushing a `v*` tag → creates draft release → builds binaries for all platforms → aggregates checksums → commits updated `verify-checksums.sha256` to main → attaches assets → publishes release. The floating major tag (e.g., `v1`) is updated to point to the bootstrap commit.
+Triggered by a push to `main` → runs all tests → computes next `vMAJOR.MINOR.PATCH` tag from `VERSION` → creates draft release → builds binaries for all platforms → aggregates checksums → commits updated `verify-checksums.sha256` to main → attaches assets → publishes release → updates floating major tag (e.g., `v1`). The `verify-checksums.sha256` commit does not re-trigger the workflow (`paths-ignore`).
 
 ## Key constraints
 
