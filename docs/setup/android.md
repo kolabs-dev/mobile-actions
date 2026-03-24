@@ -64,18 +64,39 @@ Copy the output — this is the value for the `ANDROID_KEYSTORE_BASE64` secret.
 
 A service account is a non-human Google identity. Instead of logging in with your personal Google account during CI, you create a dedicated account that CI uses to upload builds on your behalf. You grant it only the permissions it needs (uploading releases) and nothing else.
 
-### Step-by-step setup
+There are two separate systems involved:
+
+- **Google Cloud Console** — where the service account identity is created and its JSON key is generated.
+- **Google Play Console** — where the service account is invited and granted permission to upload releases.
+
+Both steps are required.
+
+### Step 1: Link your Play Console to a Google Cloud project (if not done yet)
+
+Before creating a service account, your Play Console must be linked to a Google Cloud project. If you have never done this:
 
 1. Open [Google Play Console](https://play.google.com/console) and go to **Setup → API access**.
-2. Link your Play Console to a Google Cloud project. If you do not have one yet, click **Create new project** — Google will create one automatically.
-3. Under "Service accounts", click **Create new service account**.
-4. Click the link that takes you to **Google Cloud Console**. There:
-   1. Fill in a name for the service account (e.g. `github-actions-upload`).
-   2. Click **Create and continue**, then skip the optional role fields and click **Done**.
-   3. Find the service account in the list, click it, then go to the **Keys** tab.
-   4. Click **Add key → Create new key**, choose **JSON**, and download the file.
-5. Back in Play Console, refresh the service accounts list. Find the account you just created and click **Grant access**.
-6. Assign the **Release Manager** role (or a custom role with at least the "Releases" permission), then click **Apply**.
+2. Click **Link to a Cloud project**. You can link to an existing project or let Google create one for you automatically.
+
+Once linked, proceed to Step 2.
+
+### Step 2: Create the service account in Google Cloud Console
+
+1. In Play Console under **Setup → API access**, in the **Service accounts** section, click **Create new service account**. This opens a link to Google Cloud Console with the correct project pre-selected.
+2. In Google Cloud Console, fill in a name for the service account (e.g. `github-actions-upload`) and click **Create and continue**.
+3. Skip the optional role fields and click **Done**.
+4. Find the service account in the list, click it, then go to the **Keys** tab.
+5. Click **Add key → Create new key**, choose **JSON**, and download the file. Keep it safe — you will encode and upload it as a GitHub Secret.
+
+### Step 3: Grant the service account access in Google Play Console
+
+1. Back in Play Console under **Setup → API access**, click **Refresh service accounts**. The account you just created will appear in the list.
+2. Click **Grant access** next to the account.
+3. Under **App permissions**, find your app and enable it.
+4. Assign the **Versions** permission (listed under the "Releases" category). This is the minimum required to upload builds via the API.
+5. Click **Apply** and then **Save** to confirm.
+
+> ℹ️ The exact label may vary slightly depending on your Play Console version — look for the permission that covers uploading and managing app versions/releases. Do not assign the "Release Manager" role; granting only the **Versions** permission is sufficient and more restrictive.
 
 ### Encode the JSON key for GitHub Secrets
 
