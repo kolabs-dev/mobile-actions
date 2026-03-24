@@ -2,7 +2,9 @@ name: Release
 
 on:
   push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    branches: [main]
+    paths-ignore:
+      - 'verify-checksums.sha256'
 
 concurrency:
   group: release
@@ -12,28 +14,167 @@ permissions:
   contents: write
 
 jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491  # v5.0.0
+        with:
+          go-version: '1.26'
+      - name: Run unit tests
+        run: go test ./internal/... -v -count=1
+
+  integration-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491  # v5.0.0
+        with:
+          go-version: '1.26'
+
+      - uses: actions/setup-java@6a0805fcefea3d4657a47ac4c165951e33482018  # v4.2.2
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Build Go binaries
+        run: |
+          for program in android-build android-sign android-upload; do
+            CGO_ENABLED=0 go build -o /tmp/ma-bin/${program}-linux-amd64 ./cmd/$program
+          done
+
+      - name: Download Gradle wrapper JAR
+        run: |
+          curl -fsSL -o testdata/android/gradle/wrapper/gradle-wrapper.jar \
+            "https://github.com/gradle/gradle/raw/refs/tags/v8.4.0/gradle/wrapper/gradle-wrapper.jar"
+
+      - name: Test android-build
+        id: android-build
+        env:
+          INPUT_APP_PATH: testdata/android
+          INPUT_BUILD_TYPE: aab
+          RUNNER_TEMP: /tmp/runner
+        run: /tmp/ma-bin/android-build-linux-amd64
+
+      - name: Test android-sign
+        env:
+          INPUT_UNSIGNED_ARTIFACT_PATH: ${{ steps.android-build.outputs.unsigned-artifact-path }}
+          INPUT_KEYSTORE_PASSWORD: testpassword
+          INPUT_KEY_ALIAS: testkey
+          INPUT_KEY_PASSWORD: testpassword
+          INPUT_BUILD_TYPE: aab
+          RUNNER_TEMP: /tmp/runner
+        run: |
+          export INPUT_KEYSTORE=$(base64 -w0 testdata/android/test.keystore)
+          /tmp/ma-bin/android-sign-linux-amd64
+
+      - name: Test android-upload (dry-run)
+        env:
+          INPUT_SERVICE_ACCOUNT_JSON: e30K  # base64("{}")
+          INPUT_PACKAGE_NAME: com.example.testapp
+          INPUT_VERSION_CODE: '1'
+          INPUT_TRACK: internal
+          INPUT_BUILD_TYPE: aab
+          INPUT_ARTIFACT_PATH: /tmp/runner/mobile-actions/signed/app-release.aab
+          RUNNER_TEMP: /tmp/runner
+        run: /tmp/ma-bin/android-upload-linux-amd64 --dry-run
+
+  integration-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491  # v5.0.0
+        with:
+          go-version: '1.26'
+
+      - name: Build Go binaries
+        run: |
+          for program in ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
+            CGO_ENABLED=0 go build -o /tmp/ma-bin/${program}-darwin-arm64 ./cmd/$program
+          done
+
+      - name: Test ios-build (stub project)
+        env:
+          INPUT_APP_PATH: testdata/ios
+          INPUT_SCHEME: TestApp
+          INPUT_BUNDLE_ID: com.example.testapp
+          INPUT_TEAM_ID: FAKETEAMID1
+          INPUT_DESTINATION: testflight
+          RUNNER_TEMP: /tmp/runner
+          GITHUB_OUTPUT: /tmp/github-output-ios
+        run: |
+          mkdir -p /tmp/runner/mobile-actions
+          echo '{"keychain_name":"test","original_keychains":[],"provisioning_profile_path":""}' \
+            > /tmp/runner/mobile-actions/signing-state.json
+          /tmp/ma-bin/ios-build-darwin-arm64 || true  # expected to fail without real credentials
+
+      - name: Test ios-upload (dry-run)
+        env:
+          INPUT_APP_STORE_CONNECT_KEY: dGVzdA==
+          INPUT_APP_STORE_CONNECT_KEY_ID: TESTKEYID
+          INPUT_APP_STORE_CONNECT_ISSUER_ID: test-issuer
+          INPUT_XCODE_VERSION: '16.2'
+          INPUT_ARTIFACT_PATH: /tmp/test.ipa
+          RUNNER_TEMP: /tmp/runner
+        run: /tmp/ma-bin/ios-upload-darwin-arm64 --dry-run
+
+  tag:
+    needs: [unit-tests, integration-android, integration-ios]
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.compute.outputs.tag }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Compute and push next tag
+        id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MAJOR=$(cat VERSION | tr -d '[:space:]')
+
+          LATEST=$(git tag -l "v${MAJOR}.*.*" | sort -V | tail -1)
+
+          if [ -z "$LATEST" ]; then
+            NEXT="v${MAJOR}.0.0"
+          else
+            MINOR=$(echo "$LATEST" | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | cut -d. -f3)
+            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+
+          echo "Latest tag: ${LATEST:-none}"
+          echo "Next tag:   $NEXT"
+
+          git tag "$NEXT"
+          git push origin "$NEXT"
+          echo "tag=$NEXT" >> $GITHUB_OUTPUT
+
   create-release:
+    needs: tag
     runs-on: ubuntu-latest
     steps:
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create ${{ github.ref_name }} \
+          gh release create ${{ needs.tag.outputs.tag }} \
             --repo ${{ github.repository }} \
-            --title "${{ github.ref_name }}" \
+            --title "${{ needs.tag.outputs.tag }}" \
             --draft \
             --generate-notes
 
   build:
-    needs: create-release
+    needs: [create-release, tag]
     uses: ./.github/workflows/build-binaries.yml
     with:
-      release-tag: ${{ github.ref_name }}
+      release-tag: ${{ needs.tag.outputs.tag }}
     secrets: inherit
 
   update-tags:
-    needs: build
+    needs: [build, tag]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
@@ -45,31 +186,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BOOTSTRAP_SHA: ${{ needs.build.outputs.bootstrap-commit-sha }}
         run: |
-          MAJOR=$(echo ${{ github.ref_name }} | cut -d. -f1)
+          MAJOR=$(echo ${{ needs.tag.outputs.tag }} | cut -d. -f1)
 
-          # Point floating tag to the bootstrap commit
           git tag -f $MAJOR $BOOTSTRAP_SHA
           git push -f origin $MAJOR
 
-          # Recreate the floating-tag GitHub Release with same assets
           gh release delete $MAJOR --yes --cleanup-tag 2>/dev/null || true
           gh release create $MAJOR \
-            --title "$MAJOR (latest — ${{ github.ref_name }})" \
-            --notes "Always points to the latest $MAJOR.x.x release. Currently ${{ github.ref_name }}."
+            --title "$MAJOR (latest — ${{ needs.tag.outputs.tag }})" \
+            --notes "Always points to the latest $MAJOR.x.x release. Currently ${{ needs.tag.outputs.tag }}."
 
           ASSET_DIR=$RUNNER_TEMP/release-assets
           mkdir -p $ASSET_DIR
-          gh release download ${{ github.ref_name }} --dir $ASSET_DIR
+          gh release download ${{ needs.tag.outputs.tag }} --dir $ASSET_DIR
           gh release upload $MAJOR $ASSET_DIR/*
 
   publish-release:
-    needs: update-tags
+    needs: [update-tags, tag]
     runs-on: ubuntu-latest
     steps:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release edit ${{ github.ref_name }} \
+          gh release edit ${{ needs.tag.outputs.tag }} \
             --repo ${{ github.repository }} \
             --draft=false
