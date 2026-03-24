@@ -61,12 +61,10 @@ jobs:
           # Remove partial files from upload
           rm release-assets/checksums-*.txt
           # Generate verify-checksums.sha256 (only verify-checksums-* lines)
-          grep "verify-checksums-" release-assets/checksums.txt > verify-checksums.sha256
+          grep "verify-checksums-" release-assets/checksums.txt > release-assets/verify-checksums.sha256
 
       - name: Upload release assets artifact
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3  # v4.3.1
         with:
           name: release-assets
-          path: |
-            release-assets/
-            verify-checksums.sha256
+          path: release-assets/
