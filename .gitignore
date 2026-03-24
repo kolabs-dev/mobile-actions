@@ -7,3 +7,9 @@ ios-setup-signing
 ios-teardown-signing
 ios-upload
 verify-checksums
+
+# Android testdata build outputs
+testdata/android/.gradle/
+testdata/android/build/
+testdata/android/app/build/
+testdata/android/gradle/wrapper/gradle-wrapper.jar
