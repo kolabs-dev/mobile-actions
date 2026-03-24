@@ -63,7 +63,7 @@ jobs:
         uses: actions/download-artifact@87c55149d96e628cc2ef7e6fc2aab372015aec85  # v4.1.3
         with:
           name: release-assets
-          path: .
+          path: release-assets
 
       - name: Push tag
         run: |
