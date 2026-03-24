@@ -71,14 +71,14 @@ There are two separate systems involved:
 
 You will need to use both systems.
 
-### Step 1: Link your Play Console to a Google Cloud project (if not done yet)
+### Step 1: Link your Play Console to a Google Cloud project
 
-Before creating a service account, your Play Console must be linked to a Google Cloud project. If you have never done this:
+Before creating a service account, your Play Console must be linked to a Google Cloud project. If a project is already listed under **Setup → API access**, skip to Step 2.
+
+If not:
 
 1. Open [Google Play Console](https://play.google.com/console) and go to **Setup → API access**.
 2. Follow the on-screen prompt to link or create a Google Cloud project. You can link to an existing project or let Google create one for you automatically.
-
-Once linked, proceed to Step 2. If a project is already listed, skip to Step 2.
 
 ### Step 2: Create the service account in Google Cloud Console
 
