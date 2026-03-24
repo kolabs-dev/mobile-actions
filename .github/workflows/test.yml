@@ -41,25 +41,22 @@ jobs:
             "https://github.com/gradle/gradle/raw/refs/tags/v8.4.0/gradle/wrapper/gradle-wrapper.jar"
 
       - name: Test android-build
+        id: android-build
         env:
           INPUT_APP_PATH: testdata/android
           INPUT_BUILD_TYPE: aab
           RUNNER_TEMP: /tmp/runner
-          GITHUB_OUTPUT: /tmp/github-output
         run: /tmp/ma-bin/android-build-linux-amd64
 
       - name: Test android-sign
         env:
+          INPUT_UNSIGNED_ARTIFACT_PATH: ${{ steps.android-build.outputs.unsigned-artifact-path }}
           INPUT_KEYSTORE_PASSWORD: testpassword
           INPUT_KEY_ALIAS: testkey
           INPUT_KEY_PASSWORD: testpassword
           INPUT_BUILD_TYPE: aab
           RUNNER_TEMP: /tmp/runner
-          GITHUB_OUTPUT: /tmp/github-output-sign
         run: |
-          # Read unsigned artifact path from previous step's GITHUB_OUTPUT file
-          UNSIGNED=$(grep '^unsigned-artifact-path=' /tmp/github-output | cut -d= -f2-)
-          export INPUT_UNSIGNED_ARTIFACT_PATH="$UNSIGNED"
           export INPUT_KEYSTORE=$(base64 -w0 testdata/android/test.keystore)
           /tmp/ma-bin/android-sign-linux-amd64
 
