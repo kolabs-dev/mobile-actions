@@ -85,7 +85,7 @@ It is a JWT-based key that lets CI authenticate to App Store Connect without a p
 
 1. Go to [App Store Connect](https://appstoreconnect.apple.com) → **Users and Access** → **Integrations** → **App Store Connect API**.
 2. Click **Generate API Key**.
-3. Give it a name (e.g. `GitHub Actions Upload`) and choose the role **App Manager** (or **Developer** if you want a narrower permission set).
+3. Give it a name (e.g. `GitHub Actions Upload`) and choose the role **App Manager**.
 4. Click **Generate**.
 
 > ⚠️ **Download the `.p8` file immediately.** This file can only be downloaded once. If you close the page without downloading it, you will need to create a new key. Store the file somewhere safe before proceeding.
@@ -152,7 +152,7 @@ In your repository, go to **Settings → Secrets and variables → Actions → N
 | `APP_STORE_CONNECT_KEY_BASE64` | Base64-encoded `.p8` API key file |
 | `APP_STORE_CONNECT_KEY_ID` | Key ID from App Store Connect (e.g. `ABCD123456`) |
 | `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID from App Store Connect (UUID format) |
-| `APPLE_TEAM_ID` | Your 10-character Apple Developer Team ID (optional — can be hardcoded in the workflow) |
+| `APPLE_TEAM_ID` | Your 10-character Apple Developer Team ID — Required — store as a secret or hardcode the value directly in the workflow's `with:` block. |
 
 ---
 
