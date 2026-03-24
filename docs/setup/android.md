@@ -89,7 +89,58 @@ Copy the output — this is the value for the `GOOGLE_SERVICE_ACCOUNT_JSON_BASE6
 
 ---
 
-## Section 3: App Metadata
+## Section 3: Build-time Config Files
+
+Some libraries and services require config files to be present in specific locations inside your `android/` directory before Gradle runs. These files are typically not committed to the repo (especially in public repos) because they contain API keys or project identifiers.
+
+You must inject them as a workflow step **before** calling `mobile-actions/android`.
+
+### Firebase (`google-services.json`)
+
+Firebase requires `android/app/google-services.json` to be present at build time. The Google Services Gradle plugin reads it automatically — you do not need to change any Gradle config.
+
+1. Copy the contents of your `google-services.json` and encode it:
+
+   ```bash
+   base64 < google-services.json | tr -d '\n'
+   ```
+
+2. Add the output as a GitHub Secret (e.g. `GOOGLE_SERVICES_JSON_BASE64`).
+
+3. Add a step to your workflow **before** the `mobile-actions/android` step to decode and write the file:
+
+   ```yaml
+   - name: Inject google-services.json
+     run: |
+       echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" \
+         | base64 -d > android/app/google-services.json
+   ```
+
+> ℹ️ If your repo is private and you are comfortable with the security trade-offs, you can commit `google-services.json` directly and skip this step.
+
+### Other config files
+
+The same pattern applies to any file that must exist at a known path before the build runs — for example:
+
+- `android/app/google-services.json` (Firebase)
+- `android/app/src/main/assets/google-services.json` (some SDK variants)
+- `.env` files consumed by Gradle
+- Any SDK-specific JSON or `.plist`-equivalent dropped into the project tree
+
+Encode the file as Base64, store it as a secret, and decode it in the workflow before the action runs:
+
+```yaml
+- name: Inject <config-file>
+  run: |
+    echo "${{ secrets.<SECRET_NAME> }}" \
+      | base64 -d > android/app/<config-file>
+```
+
+If you need to inject multiple files, add one step per file.
+
+---
+
+## Section 4: App Metadata
 
 **Inputs covered:** `package-name`, `version-code`, `track`
 
