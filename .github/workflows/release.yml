@@ -2,7 +2,9 @@ name: Release
 
 on:
   push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    branches: [main]
+    paths-ignore:
+      - 'verify-checksums.sha256'
 
 concurrency:
   group: release
@@ -12,28 +14,66 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    uses: ./.github/workflows/test.yml
+
+  tag:
+    needs: tests
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.compute.outputs.tag }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Compute and push next tag
+        id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MAJOR=$(cat VERSION | tr -d '[:space:]')
+
+          LATEST=$(git tag -l "v${MAJOR}.*.*" | sort -V | tail -1)
+
+          if [ -z "$LATEST" ]; then
+            NEXT="v${MAJOR}.0.0"
+          else
+            MINOR=$(echo "$LATEST" | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | cut -d. -f3)
+            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+
+          echo "Latest tag: ${LATEST:-none}"
+          echo "Next tag:   $NEXT"
+
+          git tag "$NEXT"
+          git push origin "$NEXT"
+          echo "tag=$NEXT" >> $GITHUB_OUTPUT
+
   create-release:
+    needs: tag
     runs-on: ubuntu-latest
     steps:
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create ${{ github.ref_name }} \
+          gh release create ${{ needs.tag.outputs.tag }} \
             --repo ${{ github.repository }} \
-            --title "${{ github.ref_name }}" \
+            --title "${{ needs.tag.outputs.tag }}" \
             --draft \
             --generate-notes
 
   build:
-    needs: create-release
+    needs: [create-release, tag]
     uses: ./.github/workflows/build-binaries.yml
     with:
-      release-tag: ${{ github.ref_name }}
+      release-tag: ${{ needs.tag.outputs.tag }}
     secrets: inherit
 
   update-tags:
-    needs: build
+    needs: [build, tag]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
@@ -45,31 +85,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BOOTSTRAP_SHA: ${{ needs.build.outputs.bootstrap-commit-sha }}
         run: |
-          MAJOR=$(echo ${{ github.ref_name }} | cut -d. -f1)
+          MAJOR=$(echo ${{ needs.tag.outputs.tag }} | cut -d. -f1)
 
-          # Point floating tag to the bootstrap commit
           git tag -f $MAJOR $BOOTSTRAP_SHA
           git push -f origin $MAJOR
 
-          # Recreate the floating-tag GitHub Release with same assets
           gh release delete $MAJOR --yes --cleanup-tag 2>/dev/null || true
           gh release create $MAJOR \
-            --title "$MAJOR (latest — ${{ github.ref_name }})" \
-            --notes "Always points to the latest $MAJOR.x.x release. Currently ${{ github.ref_name }}."
+            --title "$MAJOR (latest — ${{ needs.tag.outputs.tag }})" \
+            --notes "Always points to the latest $MAJOR.x.x release. Currently ${{ needs.tag.outputs.tag }}."
 
           ASSET_DIR=$RUNNER_TEMP/release-assets
           mkdir -p $ASSET_DIR
-          gh release download ${{ github.ref_name }} --dir $ASSET_DIR
+          gh release download ${{ needs.tag.outputs.tag }} --dir $ASSET_DIR
           gh release upload $MAJOR $ASSET_DIR/*
 
   publish-release:
-    needs: update-tags
+    needs: [update-tags, tag]
     runs-on: ubuntu-latest
     steps:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release edit ${{ github.ref_name }} \
+          gh release edit ${{ needs.tag.outputs.tag }} \
             --repo ${{ github.repository }} \
             --draft=false
