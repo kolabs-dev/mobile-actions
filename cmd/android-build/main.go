@@ -36,7 +36,7 @@ func run() error {
 
 	gradlew := filepath.Join(appPath, "gradlew")
 	actions.Group(fmt.Sprintf("Running Gradle task: %s", gradleTask))
-	if err := exec.Run(gradlew, gradleTask); err != nil {
+	if err := exec.Run(gradlew, "-p", appPath, gradleTask); err != nil {
 		actions.EndGroup()
 		return fmt.Errorf("gradle build failed: %w", err)
 	}
