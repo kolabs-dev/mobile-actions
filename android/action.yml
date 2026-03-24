@@ -80,7 +80,8 @@ runs:
           --dir $DEST \
           --clobber
 
-        ./verify-checksums-${OS}-${ARCH} --file checksums.txt --dir $DEST
+        grep "${OS}-${ARCH}" checksums.txt > checksums-filtered.txt
+        ./verify-checksums-${OS}-${ARCH} --file checksums-filtered.txt --dir $DEST
         chmod +x $DEST/*-${OS}-${ARCH}
         echo "MOBILE_ACTIONS_BIN=$DEST" >> $GITHUB_ENV
         echo "MOBILE_ACTIONS_OS_ARCH=${OS}-${ARCH}" >> $GITHUB_ENV
