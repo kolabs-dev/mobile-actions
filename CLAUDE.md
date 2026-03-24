@@ -64,7 +64,7 @@ Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They 
 
 ### Binary distribution and trust
 
-- Binaries are never committed. They are compiled with `CGO_ENABLED=0` and attached as GitHub Release assets for linux-amd64, darwin-arm64, darwin-amd64.
+- Binaries are never committed. They are compiled with `CGO_ENABLED=0` and attached as GitHub Release assets for linux-amd64, darwin-arm64.
 - `verify-checksums.sha256` (committed) contains SHA-256 hashes for the `verify-checksums` binaries only — this is the bootstrap trust anchor.
 - The composite actions download all binaries via `gh release download`, verify with `verify-checksums`, then use the other binaries.
 - `cmd/verify-checksums/` reads a checksums file (`<hash>  <filename>`) and verifies SHA-256 of each file.
