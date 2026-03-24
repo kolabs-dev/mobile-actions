@@ -68,7 +68,7 @@ runs:
           --pattern "checksums.txt" \
           --dir $DEST
 
-        HASH_FILE=${{ github.action_path }}/verify-checksums.sha256
+        HASH_FILE=${{ github.action_path }}/../verify-checksums.sha256
         cd $DEST
         if [ "$OS" = "linux" ]; then
           grep "verify-checksums-${OS}-${ARCH}" "$HASH_FILE" | sha256sum --check
