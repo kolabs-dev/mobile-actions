@@ -172,7 +172,7 @@ func updateTrack(client *http.Client, packageName, editID, track, versionCode st
 }
 
 func commitEdit(client *http.Client, packageName, editID string) error {
-	url := fmt.Sprintf("%s/%s/edits/%s:commit", playBaseURL, packageName, editID)
+	url := fmt.Sprintf("%s/%s/edits/%s:commit?changesNotSentForReview=true", playBaseURL, packageName, editID)
 	resp, err := client.Post(url, "application/json", nil)
 	if err != nil {
 		return fmt.Errorf("edits.commit: %w", err)
