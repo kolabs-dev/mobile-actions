@@ -97,6 +97,9 @@ func TestVerify_MissingFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing file, got nil")
 	}
+	if !strings.Contains(err.Error(), "checksum verification failed") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
 }
 
 func TestVerify_MalformedLine(t *testing.T) {

@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -168,7 +169,7 @@ func TestCheckStatus_Mismatch(t *testing.T) {
 func TestRun_DryRun(t *testing.T) {
 	t.Setenv("INPUT_PACKAGE_NAME", "com.example.app")
 	t.Setenv("INPUT_VERSION_CODE", "42")
-	t.Setenv("INPUT_ARTIFACT_PATH", "/tmp/fake.aab")
+	t.Setenv("INPUT_ARTIFACT_PATH", filepath.Join(t.TempDir(), "fake.aab"))
 	t.Setenv("INPUT_SERVICE_ACCOUNT_JSON", "ZmFrZQ==") // base64("fake")
 	t.Setenv("RUNNER_TEMP", t.TempDir())
 
