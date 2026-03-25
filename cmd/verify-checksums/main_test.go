@@ -17,7 +17,9 @@ func TestSha256File_Success(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Write(content)
+	if _, err := f.Write(content); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 	f.Close()
 
 	h := sha256.Sum256(content)
@@ -43,14 +45,20 @@ func TestVerify_AllMatch(t *testing.T) {
 	dir := t.TempDir()
 	content1 := []byte("file one content")
 	content2 := []byte("file two content")
-	os.WriteFile(filepath.Join(dir, "a.bin"), content1, 0644)
-	os.WriteFile(filepath.Join(dir, "b.bin"), content2, 0644)
+	if err := os.WriteFile(filepath.Join(dir, "a.bin"), content1, 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.bin"), content2, 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 	h1 := sha256.Sum256(content1)
 	h2 := sha256.Sum256(content2)
 	checksums := fmt.Sprintf("%s  a.bin\n%s  b.bin\n",
 		hex.EncodeToString(h1[:]), hex.EncodeToString(h2[:]))
 	checkFile := filepath.Join(dir, "sums.txt")
-	os.WriteFile(checkFile, []byte(checksums), 0644)
+	if err := os.WriteFile(checkFile, []byte(checksums), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 
 	if err := verify(checkFile, dir); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -59,10 +67,14 @@ func TestVerify_AllMatch(t *testing.T) {
 
 func TestVerify_HashMismatch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.bin"), []byte("real content"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "a.bin"), []byte("real content"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 	wrong := "0000000000000000000000000000000000000000000000000000000000000000"
 	checkFile := filepath.Join(dir, "sums.txt")
-	os.WriteFile(checkFile, []byte(wrong+"  a.bin\n"), 0644)
+	if err := os.WriteFile(checkFile, []byte(wrong+"  a.bin\n"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 
 	err := verify(checkFile, dir)
 	if err == nil {
@@ -77,7 +89,9 @@ func TestVerify_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	wrong := "0000000000000000000000000000000000000000000000000000000000000000"
 	checkFile := filepath.Join(dir, "sums.txt")
-	os.WriteFile(checkFile, []byte(wrong+"  missing.bin\n"), 0644)
+	if err := os.WriteFile(checkFile, []byte(wrong+"  missing.bin\n"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 
 	err := verify(checkFile, dir)
 	if err == nil {
@@ -89,7 +103,9 @@ func TestVerify_MalformedLine(t *testing.T) {
 	dir := t.TempDir()
 	checkFile := filepath.Join(dir, "sums.txt")
 	// Single space instead of two — malformed
-	os.WriteFile(checkFile, []byte("abc123 single-space.bin\n"), 0644)
+	if err := os.WriteFile(checkFile, []byte("abc123 single-space.bin\n"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 
 	err := verify(checkFile, dir)
 	if err == nil {
@@ -103,7 +119,9 @@ func TestVerify_MalformedLine(t *testing.T) {
 func TestVerify_EmptyLinesIgnored(t *testing.T) {
 	dir := t.TempDir()
 	checkFile := filepath.Join(dir, "sums.txt")
-	os.WriteFile(checkFile, []byte("\n\n\n"), 0644)
+	if err := os.WriteFile(checkFile, []byte("\n\n\n"), 0644); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
 
 	if err := verify(checkFile, dir); err != nil {
 		t.Fatalf("unexpected error: %v", err)
