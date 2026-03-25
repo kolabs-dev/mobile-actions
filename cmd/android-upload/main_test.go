@@ -78,3 +78,105 @@ func TestCommitEdit_NoRetryOnUnrelatedError(t *testing.T) {
 		t.Fatalf("expected 1 attempt, got %d", attempts)
 	}
 }
+
+func TestCreateEdit_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/edits") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":"edit-abc"}`))
+	}))
+	defer srv.Close()
+
+	orig := playBaseURL
+	playBaseURL = srv.URL
+	defer func() { playBaseURL = orig }()
+
+	id, err := createEdit(srv.Client(), "com.example.app")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "edit-abc" {
+		t.Fatalf("got id %q, want %q", id, "edit-abc")
+	}
+}
+
+func TestCreateEdit_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte(`internal server error`))
+	}))
+	defer srv.Close()
+
+	orig := playBaseURL
+	playBaseURL = srv.URL
+	defer func() { playBaseURL = orig }()
+
+	_, err := createEdit(srv.Client(), "com.example.app")
+	if err == nil {
+		t.Fatal("expected error for 500 response, got nil")
+	}
+}
+
+func TestUpdateTrack_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, "/tracks/internal") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	orig := playBaseURL
+	playBaseURL = srv.URL
+	defer func() { playBaseURL = orig }()
+
+	err := updateTrack(srv.Client(), "com.example.app", "edit-123", "internal", "42")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCheckStatus_Match(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       http.NoBody,
+	}
+	if err := checkStatus(resp, 200); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCheckStatus_Mismatch(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: 404,
+		Body:       http.NoBody,
+	}
+	if err := checkStatus(resp, 200); err == nil {
+		t.Fatal("expected error for status mismatch, got nil")
+	}
+}
+
+func TestRun_DryRun(t *testing.T) {
+	t.Setenv("INPUT_PACKAGE_NAME", "com.example.app")
+	t.Setenv("INPUT_VERSION_CODE", "42")
+	t.Setenv("INPUT_ARTIFACT_PATH", "/tmp/fake.aab")
+	t.Setenv("INPUT_SERVICE_ACCOUNT_JSON", "ZmFrZQ==") // base64("fake")
+	t.Setenv("RUNNER_TEMP", t.TempDir())
+
+	orig := *dryRun
+	*dryRun = true
+	defer func() { *dryRun = orig }()
+
+	if err := run(); err != nil {
+		t.Fatalf("unexpected error in dry-run: %v", err)
+	}
+}
