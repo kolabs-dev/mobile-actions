@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Unit tests:**
 ```bash
-go test ./internal/... -v -count=1
+go test ./internal/... ./cmd/... -v -count=1
 ```
 
 **Single test:**
@@ -89,3 +89,4 @@ Triggered by a push to `main` → runs all tests → computes next `vMAJOR.MINOR
 - Binaries are never committed to the repo.
 - iOS teardown must always run (composite action uses `if: always()`).
 - Integration tests for iOS expect `ios-build` to fail without real provisioning credentials — this is expected behavior.
+- When modifying any binary in `cmd/`, write or update unit tests in the corresponding `cmd/<binary>/main_test.go`.
