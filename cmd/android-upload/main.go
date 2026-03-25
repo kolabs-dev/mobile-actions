@@ -82,7 +82,7 @@ func run() error {
 	return nil
 }
 
-const playBaseURL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications"
+var playBaseURL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications"
 
 func googleHTTPClient(saPath string) (*http.Client, error) {
 	data, err := os.ReadFile(saPath)
@@ -172,13 +172,33 @@ func updateTrack(client *http.Client, packageName, editID, track, versionCode st
 }
 
 func commitEdit(client *http.Client, packageName, editID string) error {
-	url := fmt.Sprintf("%s/%s/edits/%s:commit?changesNotSentForReview=true", playBaseURL, packageName, editID)
+	url := fmt.Sprintf("%s/%s/edits/%s:commit", playBaseURL, packageName, editID)
 	resp, err := client.Post(url, "application/json", nil)
 	if err != nil {
 		return fmt.Errorf("edits.commit: %w", err)
 	}
-	defer resp.Body.Close()
-	return checkStatus(resp, 200)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode == 200 {
+		return nil
+	}
+
+	// Some Play Store accounts require changesNotSentForReview=true (managed publishing).
+	// Retry with the flag when the API explicitly mentions it.
+	if resp.StatusCode == 400 && strings.Contains(string(body), "changesNotSentForReview") {
+		fmt.Println("retrying commit with changesNotSentForReview=true")
+		retryURL := fmt.Sprintf("%s/%s/edits/%s:commit?changesNotSentForReview=true", playBaseURL, packageName, editID)
+		resp2, err := client.Post(retryURL, "application/json", nil)
+		if err != nil {
+			return fmt.Errorf("edits.commit: %w", err)
+		}
+		defer resp2.Body.Close()
+		return checkStatus(resp2, 200)
+	}
+
+	actions.Error(fmt.Sprintf("API error %d: %s", resp.StatusCode, string(body)))
+	return fmt.Errorf("unexpected status %d", resp.StatusCode)
 }
 
 func checkStatus(resp *http.Response, expected int) error {
