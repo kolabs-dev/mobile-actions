@@ -51,7 +51,8 @@ func CreateEdit(client *http.Client, packageName string) (string, error) {
 }
 
 // PromoteTrack updates the given track to contain versionCode at 100% rollout.
-// For alpha and beta tracks, userFraction is ignored by the Play Store API.
+// userFraction must not be sent for completed releases — the Play Store API
+// rejects it with INVALID_ARGUMENT "COMPLETED release must not have fraction".
 func PromoteTrack(client *http.Client, packageName, editID, track, versionCode string) error {
 	url := fmt.Sprintf("%s/%s/edits/%s/tracks/%s", playBaseURL, packageName, editID, track)
 	body := map[string]interface{}{
@@ -60,7 +61,6 @@ func PromoteTrack(client *http.Client, packageName, editID, track, versionCode s
 			{
 				"versionCodes": []string{versionCode},
 				"status":       "completed",
-				"userFraction": 1.0,
 			},
 		},
 	}
