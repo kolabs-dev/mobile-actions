@@ -138,8 +138,8 @@ func TestPromoteTrack_RequestBody(t *testing.T) {
 	if release["status"] != "completed" {
 		t.Errorf("status = %v, want completed", release["status"])
 	}
-	if release["userFraction"] != 1.0 {
-		t.Errorf("userFraction = %v, want 1.0", release["userFraction"])
+	if _, ok := release["userFraction"]; ok {
+		t.Errorf("userFraction must not be present for completed releases, got %v", release["userFraction"])
 	}
 	vcs := release["versionCodes"].([]interface{})
 	if vcs[0] != "42" {
