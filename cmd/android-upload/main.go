@@ -2,9 +2,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -12,10 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"golang.org/x/oauth2/google"
-
 	"github.com/kolabs-dev/mobile-actions/internal/actions"
-	"github.com/kolabs-dev/mobile-actions/internal/secrets"
+	"github.com/kolabs-dev/mobile-actions/internal/playstore"
 )
 
 var dryRun = flag.Bool("dry-run", false, "log what would be uploaded without actually uploading")
@@ -46,13 +41,7 @@ func run() error {
 		return nil
 	}
 
-	saPath, cleanSA, err := secrets.DecodeToFile(serviceAccountB64, "service-account-*.json")
-	if err != nil {
-		return fmt.Errorf("decode service account: %w", err)
-	}
-	defer cleanSA()
-
-	client, err := googleHTTPClient(saPath)
+	client, err := playstore.NewClient(serviceAccountB64)
 	if err != nil {
 		return err
 	}
@@ -60,7 +49,7 @@ func run() error {
 	actions.Group("Uploading to Google Play")
 	defer actions.EndGroup()
 
-	editID, err := createEdit(client, packageName)
+	editID, err := playstore.CreateEdit(client, packageName)
 	if err != nil {
 		return err
 	}
@@ -70,47 +59,16 @@ func run() error {
 		return err
 	}
 
-	if err := updateTrack(client, packageName, editID, track, versionCode); err != nil {
+	if err := playstore.PromoteTrack(client, packageName, editID, track, versionCode); err != nil {
 		return err
 	}
 
-	if err := commitEdit(client, packageName, editID); err != nil {
+	if err := playstore.CommitEdit(client, packageName, editID); err != nil {
 		return err
 	}
 
 	fmt.Println("upload complete")
 	return nil
-}
-
-var playBaseURL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications"
-
-func googleHTTPClient(saPath string) (*http.Client, error) {
-	data, err := os.ReadFile(saPath)
-	if err != nil {
-		return nil, fmt.Errorf("read service account: %w", err)
-	}
-	conf, err := google.JWTConfigFromJSON(data, "https://www.googleapis.com/auth/androidpublisher")
-	if err != nil {
-		return nil, fmt.Errorf("parse service account: %w", err)
-	}
-	return conf.Client(context.Background()), nil
-}
-
-func createEdit(client *http.Client, packageName string) (string, error) {
-	url := fmt.Sprintf("%s/%s/edits", playBaseURL, packageName)
-	resp, err := client.Post(url, "application/json", bytes.NewBufferString("{}"))
-	if err != nil {
-		return "", fmt.Errorf("edits.insert: %w", err)
-	}
-	defer resp.Body.Close()
-	if err := checkStatus(resp, 200); err != nil {
-		return "", fmt.Errorf("edits.insert: %w", err)
-	}
-	var result struct {
-		ID string `json:"id"`
-	}
-	json.NewDecoder(resp.Body).Decode(&result)
-	return result.ID, nil
 }
 
 func uploadArtifact(client *http.Client, packageName, editID, buildType, artifactPath string) error {
@@ -147,58 +105,6 @@ func uploadArtifact(client *http.Client, packageName, editID, buildType, artifac
 		return fmt.Errorf("edits.%s.upload: version code already exists (HTTP 409)", resource)
 	}
 	return checkStatus(resp, 200)
-}
-
-func updateTrack(client *http.Client, packageName, editID, track, versionCode string) error {
-	url := fmt.Sprintf("%s/%s/edits/%s/tracks/%s", playBaseURL, packageName, editID, track)
-	body := map[string]interface{}{
-		"track": track,
-		"releases": []map[string]interface{}{
-			{
-				"versionCodes": []string{versionCode},
-				"status":       "completed",
-			},
-		},
-	}
-	data, _ := json.Marshal(body)
-	req, _ := http.NewRequest("PUT", url, bytes.NewReader(data))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("edits.tracks.update: %w", err)
-	}
-	defer resp.Body.Close()
-	return checkStatus(resp, 200)
-}
-
-func commitEdit(client *http.Client, packageName, editID string) error {
-	url := fmt.Sprintf("%s/%s/edits/%s:commit", playBaseURL, packageName, editID)
-	resp, err := client.Post(url, "application/json", nil)
-	if err != nil {
-		return fmt.Errorf("edits.commit: %w", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	if resp.StatusCode == 200 {
-		return nil
-	}
-
-	// Some Play Store accounts require changesNotSentForReview=true (managed publishing).
-	// Retry with the flag when the API explicitly mentions it.
-	if resp.StatusCode == 400 && strings.Contains(string(body), "changesNotSentForReview") {
-		fmt.Println("retrying commit with changesNotSentForReview=true")
-		retryURL := fmt.Sprintf("%s/%s/edits/%s:commit?changesNotSentForReview=true", playBaseURL, packageName, editID)
-		resp2, err := client.Post(retryURL, "application/json", nil)
-		if err != nil {
-			return fmt.Errorf("edits.commit: %w", err)
-		}
-		defer resp2.Body.Close()
-		return checkStatus(resp2, 200)
-	}
-
-	actions.Error(fmt.Sprintf("API error %d: %s", resp.StatusCode, string(body)))
-	return fmt.Errorf("unexpected status %d", resp.StatusCode)
 }
 
 func checkStatus(resp *http.Response, expected int) error {
