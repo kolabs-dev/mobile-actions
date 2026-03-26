@@ -1,0 +1,67 @@
+name: 'mobile-actions/android-promote'
+description: 'Promote an Android app version to a Play Store track'
+
+inputs:
+  service-account-json:
+    description: 'Base64-encoded Google service account JSON'
+    required: true
+  package-name:
+    description: 'App package name (e.g. com.myapp)'
+    required: true
+  version-code:
+    description: 'Integer version code to promote'
+    required: true
+  target-track:
+    description: "Play Store track: 'alpha', 'beta', or 'production'"
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download mobile-actions binaries
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        RAW_ARCH=$(uname -m)
+        ARCH=$( [ "$RAW_ARCH" = "x86_64" ] && echo "amd64" || echo "arm64" )
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        VERSION=$GITHUB_ACTION_REF
+        DEST=$RUNNER_TEMP/mobile-actions-bin
+        mkdir -p $DEST
+
+        gh release download "$VERSION" \
+          --repo kolabs-dev/mobile-actions \
+          --pattern "verify-checksums-${OS}-${ARCH}" \
+          --pattern "checksums.txt" \
+          --dir $DEST
+
+        HASH_FILE=${{ github.action_path }}/../verify-checksums.sha256
+        cd $DEST
+        if [ "$OS" = "linux" ]; then
+          grep "verify-checksums-${OS}-${ARCH}" "$HASH_FILE" | sha256sum --check
+        else
+          grep "verify-checksums-${OS}-${ARCH}" "$HASH_FILE" | shasum -a 256 --check
+        fi
+        chmod +x verify-checksums-${OS}-${ARCH}
+
+        gh release download "$VERSION" \
+          --repo kolabs-dev/mobile-actions \
+          --pattern "*-${OS}-${ARCH}" \
+          --dir $DEST \
+          --clobber
+
+        grep "${OS}-${ARCH}" checksums.txt > checksums-filtered.txt
+        ./verify-checksums-${OS}-${ARCH} --file checksums-filtered.txt --dir $DEST
+        chmod +x $DEST/*-${OS}-${ARCH}
+        echo "MOBILE_ACTIONS_BIN=$DEST" >> $GITHUB_ENV
+        echo "MOBILE_ACTIONS_OS_ARCH=${OS}-${ARCH}" >> $GITHUB_ENV
+
+    - name: Promote on Play Store
+      shell: bash
+      env:
+        INPUT_SERVICE_ACCOUNT_JSON: ${{ inputs.service-account-json }}
+        INPUT_PACKAGE_NAME: ${{ inputs.package-name }}
+        INPUT_VERSION_CODE: ${{ inputs.version-code }}
+        INPUT_TARGET_TRACK: ${{ inputs.target-track }}
+      run: $MOBILE_ACTIONS_BIN/android-promote-$MOBILE_ACTIONS_OS_ARCH

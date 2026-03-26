@@ -1,6 +1,6 @@
 # Android Setup Guide
 
-This guide walks you through setting up the `kolabs-dev/mobile-actions/android@v1` action from scratch. By the end, you will have a GitHub Actions workflow that builds, signs, and uploads your Android app to Google Play automatically on every tagged release.
+This guide walks you through setting up the `kolabs-dev/mobile-actions/android-upload@v1` action from scratch. By the end, you will have a GitHub Actions workflow that builds, signs, and uploads your Android app to Google Play automatically on every tagged release.
 
 It assumes you have built an Android app but have never automated publishing before.
 
@@ -233,7 +233,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kolabs-dev/mobile-actions/android@v1
+      - uses: kolabs-dev/mobile-actions/android-upload@v1
         with:
           app-path: android
           build-type: aab

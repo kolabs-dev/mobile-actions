@@ -30,7 +30,7 @@ jobs:
 
       - name: Build Go binaries
         run: |
-          for program in android-build android-sign android-upload; do
+          for program in android-build android-sign android-upload android-promote; do
             CGO_ENABLED=0 go build -o /tmp/ma-bin/${program}-linux-amd64 ./cmd/$program
           done
 
@@ -69,6 +69,14 @@ jobs:
           INPUT_ARTIFACT_PATH: /tmp/runner/mobile-actions/signed/app-release.aab
           RUNNER_TEMP: /tmp/runner
         run: /tmp/ma-bin/android-upload-linux-amd64 --dry-run
+
+      - name: Test android-promote (dry-run)
+        env:
+          INPUT_SERVICE_ACCOUNT_JSON: e30K  # base64("{}")
+          INPUT_PACKAGE_NAME: com.example.testapp
+          INPUT_VERSION_CODE: '1'
+          INPUT_TARGET_TRACK: production
+        run: /tmp/ma-bin/android-promote-linux-amd64 --dry-run
 
   integration-ios:
     runs-on: macos-latest

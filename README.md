@@ -1,18 +1,19 @@
 # mobile-actions
 
-Reusable GitHub Actions for automating mobile app releases. Provides two composite actions:
+Reusable GitHub Actions for automating mobile app releases. Provides three composite actions:
 
-- **`kolabs-dev/mobile-actions/android@v1`** — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
-- **`kolabs-dev/mobile-actions/ios@v1`** — Build, sign, and upload iOS apps (IPA) to App Store Connect / TestFlight
+- **`kolabs-dev/mobile-actions/android-upload@v1`** — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
+- **`kolabs-dev/mobile-actions/android-promote@v1`** — Promote an uploaded Android app to a Play Store track (alpha/beta/production)
+- **`kolabs-dev/mobile-actions/ios-upload@v1`** — Build, sign, and upload iOS apps (IPA) to App Store Connect / TestFlight
 
-## Android Action
+## Android Upload Action
 
 Builds a Gradle project, signs the artifact with your keystore, and uploads it to Google Play Store.
 
 ### Usage
 
 ```yaml
-- uses: kolabs-dev/mobile-actions/android@v1
+- uses: kolabs-dev/mobile-actions/android-upload@v1
   with:
     keystore: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     keystore-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -60,7 +61,7 @@ base64 -i service-account.json | tr -d '\n'
 
 The service account needs the **Release Manager** role (or equivalent) in Google Play Console.
 
-> First time? See the [Android setup guide](docs/setup/android.md) for step-by-step instructions on creating a keystore, setting up a service account, and configuring GitHub Secrets.
+> First time? See the [Android setup guide](docs/setup/android-upload.md) for step-by-step instructions on creating a keystore, setting up a service account, and configuring GitHub Secrets.
 
 ### Full example
 
@@ -77,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kolabs-dev/mobile-actions/android@v1
+      - uses: kolabs-dev/mobile-actions/android-upload@v1
         with:
           app-path: android
           build-type: aab
@@ -94,14 +95,81 @@ jobs:
 
 ---
 
-## iOS Action
+## Android Promote Action
+
+Promotes an already-uploaded Android app version to a Play Store track. Use this after `android-upload` to move a build from `internal` testing through to `production`.
+
+### Usage
+
+```yaml
+- uses: kolabs-dev/mobile-actions/android-promote@v1
+  with:
+    service-account-json: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
+    package-name: com.example.myapp
+    version-code: ${{ github.run_number }}
+    target-track: production
+```
+
+### Inputs
+
+| Input | Required | Description |
+|-------|----------|-------------|
+| `service-account-json` | **Yes** | Base64-encoded Google service account JSON |
+| `package-name` | **Yes** | App package name (e.g. `com.myapp`) |
+| `version-code` | **Yes** | Integer version code to promote |
+| `target-track` | **Yes** | Play Store track: `alpha`, `beta`, or `production` |
+
+### Full example
+
+A two-step workflow that uploads to `internal` and then promotes to `production`:
+
+```yaml
+name: Android Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: kolabs-dev/mobile-actions/android-upload@v1
+        with:
+          app-path: android
+          keystore: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          service-account-json: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
+          package-name: com.example.myapp
+          version-code: ${{ github.run_number }}
+          track: internal
+
+      - uses: kolabs-dev/mobile-actions/android-promote@v1
+        with:
+          service-account-json: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
+          package-name: com.example.myapp
+          version-code: ${{ github.run_number }}
+          target-track: production
+```
+
+> **Note:** `target-track` accepts `alpha`, `beta`, or `production`. The `internal` track is only valid for upload, not promotion. To promote through multiple tracks, call the action twice.
+
+> First time? See the [Android Promote setup guide](docs/setup/android-promote.md) for usage patterns including staged promotion and manual release gates.
+
+---
+
+## iOS Upload Action
 
 Builds an Xcode project, signs the IPA with your certificate and provisioning profile, and uploads it to App Store Connect or TestFlight.
 
 ### Usage
 
 ```yaml
-- uses: kolabs-dev/mobile-actions/ios@v1
+- uses: kolabs-dev/mobile-actions/ios-upload@v1
   with:
     scheme: MyApp
     bundle-id: com.example.myapp
@@ -155,7 +223,7 @@ base64 -i MyApp.mobileprovision | tr -d '\n'
 base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
 ```
 
-> First time? See the [iOS setup guide](docs/setup/ios.md) for step-by-step instructions on creating a distribution certificate, provisioning profile, and App Store Connect API key.
+> First time? See the [iOS setup guide](docs/setup/ios-upload.md) for step-by-step instructions on creating a distribution certificate, provisioning profile, and App Store Connect API key.
 
 ### Full example
 
@@ -172,7 +240,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kolabs-dev/mobile-actions/ios@v1
+      - uses: kolabs-dev/mobile-actions/ios-upload@v1
         with:
           app-path: ios
           scheme: MyApp
@@ -203,14 +271,14 @@ CGO_ENABLED=0 go build -o bin/android-build ./cmd/android-build
 
 Build all binaries for the current platform:
 ```bash
-for program in android-build android-sign android-upload ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
+for program in android-build android-sign android-upload android-promote ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
   CGO_ENABLED=0 go build -o bin/$program ./cmd/$program
 done
 ```
 
 Run tests and lint:
 ```bash
-go test ./internal/... -v -count=1
+go test ./internal/... ./cmd/... -v -count=1
 go vet ./...
 ```
 

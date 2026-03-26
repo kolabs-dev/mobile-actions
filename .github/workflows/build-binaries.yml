@@ -20,7 +20,7 @@ jobs:
 
       - name: Build binaries
         run: |
-          PROGRAMS="android-build android-sign android-upload ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums"
+          PROGRAMS="android-build android-sign android-upload android-promote ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums"
           for program in $PROGRAMS; do
             CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
               go build -o ${program}-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/$program

@@ -1,11 +1,9 @@
 bin/
 android-build
 android-sign
-android-upload
 ios-build
 ios-setup-signing
 ios-teardown-signing
-ios-upload
 verify-checksums
 
 # Android testdata build outputs

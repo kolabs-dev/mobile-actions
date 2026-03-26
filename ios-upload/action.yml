@@ -1,4 +1,4 @@
-name: 'mobile-actions/ios'
+name: 'mobile-actions/ios-upload'
 description: 'Build, sign, and upload an iOS app to App Store Connect or TestFlight'
 
 inputs:

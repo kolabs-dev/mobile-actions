@@ -1,4 +1,4 @@
-name: 'mobile-actions/android'
+name: 'mobile-actions/android-upload'
 description: 'Build, sign, and upload an Android app to Google Play Store'
 
 inputs:

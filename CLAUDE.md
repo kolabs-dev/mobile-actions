@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 `mobile-actions` is a GitHub Actions repository providing two reusable composite actions for automating mobile app releases:
-- `kolabs-dev/mobile-actions/android@v1` — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
-- `kolabs-dev/mobile-actions/ios@v1` — Build, sign, and upload iOS apps (IPA) to App Store Connect/TestFlight
+- `kolabs-dev/mobile-actions/android-upload@v1` — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
+- `kolabs-dev/mobile-actions/android-promote@v1` — Promote an uploaded Android app to a Play Store track (alpha/beta/production)
+- `kolabs-dev/mobile-actions/ios-upload@v1` — Build, sign, and upload iOS apps (IPA) to App Store Connect/TestFlight
 
 ## Commands
 
@@ -27,7 +28,7 @@ CGO_ENABLED=0 go build -o bin/android-build ./cmd/android-build
 
 **Build all binaries for a platform:**
 ```bash
-for program in android-build android-sign android-upload ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
+for program in android-build android-sign android-upload android-promote ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
   CGO_ENABLED=0 go build -o bin/$program ./cmd/$program
 done
 ```
@@ -41,19 +42,21 @@ go vet ./...
 
 ### Structure
 
-Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They communicate via `$GITHUB_OUTPUT` and the filesystem. The composite actions in `android/action.yml` and `ios/action.yml` orchestrate the binaries.
+Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They communicate via `$GITHUB_OUTPUT` and the filesystem. The composite actions in `android-upload/action.yml`, `android-promote/action.yml`, and `ios-upload/action.yml` orchestrate the binaries.
 
 ### Shared packages (`internal/`)
 
 - **`internal/actions/`** — GitHub Actions helpers: `SetOutput`, `AddMask`, `Group`/`EndGroup`, `Error`/`Warning`. These write to `$GITHUB_OUTPUT` and emit `::command::` annotations.
 - **`internal/exec/`** — Subprocess wrapper: `Run()` streams stdout/stderr; `RunOutput()` captures stdout.
 - **`internal/secrets/`** — Decodes base64 secrets to temp files under `$RUNNER_TEMP/mobile-actions/` and returns a cleanup function.
+- **`internal/playstore/`** — Google Play API client and edit lifecycle helpers: `NewClient`, `CreateEdit`, `PromoteTrack`, `CommitEdit`.
 
 ### Android pipeline (`cmd/android-*/`)
 
 1. **`android-build`** — Runs Gradle (`bundleRelease` for AAB, `assembleRelease` for APK), finds the unsigned artifact, outputs `unsigned-artifact-path`.
 2. **`android-sign`** — Decodes keystore, uses `jarsigner` for AAB or `apksigner` (auto-discovered in `$ANDROID_SDK_ROOT/build-tools/`, highest semver) for APK. Outputs `artifact-path`.
 3. **`android-upload`** — OAuth2 JWT with service account JSON, calls Google Play API (create edit → upload → update track → commit). Supports `--dry-run`.
+4. **`android-promote`** — OAuth2 JWT with service account JSON, calls Google Play API (create edit → update track → commit). Promotes an already-uploaded version to alpha, beta, or production. Supports `--dry-run`.
 
 ### iOS pipeline (`cmd/ios-*/`)
 
