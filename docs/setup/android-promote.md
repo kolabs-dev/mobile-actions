@@ -14,7 +14,7 @@ The `android-promote` action moves an existing build to a higher track in the Pl
 
 ## Prerequisites
 
-- A Google service account with Play Store access (see [Android setup guide](android.md#section-2-google-play-service-account))
+- A Google service account with Play Store access (see [Android setup guide](android-upload.md#section-2-google-play-service-account))
 - A build already uploaded to Google Play with a known version code
 - The version must be in a track before you can promote it (e.g. uploaded to `internal` first)
 
@@ -132,4 +132,4 @@ The `android-promote` action only requires the service account secret — no key
 |---|---|
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | Base64-encoded service account JSON key |
 
-The service account must have the **Versions** permission for your app in Google Play Console. See [Section 2 of the Android setup guide](android.md#section-2-google-play-service-account) for setup instructions.
+The service account must have the **Versions** permission for your app in Google Play Console. See [Section 2 of the Android setup guide](android-upload.md#section-2-google-play-service-account) for setup instructions.

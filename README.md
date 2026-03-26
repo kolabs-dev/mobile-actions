@@ -61,7 +61,7 @@ base64 -i service-account.json | tr -d '\n'
 
 The service account needs the **Release Manager** role (or equivalent) in Google Play Console.
 
-> First time? See the [Android setup guide](docs/setup/android.md) for step-by-step instructions on creating a keystore, setting up a service account, and configuring GitHub Secrets.
+> First time? See the [Android setup guide](docs/setup/android-upload.md) for step-by-step instructions on creating a keystore, setting up a service account, and configuring GitHub Secrets.
 
 ### Full example
 
@@ -223,7 +223,7 @@ base64 -i MyApp.mobileprovision | tr -d '\n'
 base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
 ```
 
-> First time? See the [iOS setup guide](docs/setup/ios.md) for step-by-step instructions on creating a distribution certificate, provisioning profile, and App Store Connect API key.
+> First time? See the [iOS setup guide](docs/setup/ios-upload.md) for step-by-step instructions on creating a distribution certificate, provisioning profile, and App Store Connect API key.
 
 ### Full example
 
