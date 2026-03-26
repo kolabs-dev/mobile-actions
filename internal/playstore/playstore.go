@@ -44,7 +44,9 @@ func CreateEdit(client *http.Client, packageName string) (string, error) {
 	var result struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("edits.insert: decode response: %w", err)
+	}
 	return result.ID, nil
 }
 
@@ -63,7 +65,10 @@ func PromoteTrack(client *http.Client, packageName, editID, track, versionCode s
 		},
 	}
 	data, _ := json.Marshal(body)
-	req, _ := http.NewRequest("PUT", url, bytes.NewReader(data))
+	req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("edits.tracks.update: create request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
