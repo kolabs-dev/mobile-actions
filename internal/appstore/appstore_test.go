@@ -1,22 +1,25 @@
 package appstore
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-// testKeyB64 generates a base64-encoded PKCS#8 PEM RSA private key (.p8 format).
+// testKeyB64 generates a base64-encoded PKCS#8 PEM EC P-256 private key (.p8 format).
 func testKeyB64(t *testing.T) string {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
@@ -28,10 +31,10 @@ func testKeyB64(t *testing.T) string {
 	return base64.StdEncoding.EncodeToString(pemBlock)
 }
 
-// testClientWithServer creates a Client using a generated RSA key and the given test server's HTTP client.
+// testClientWithServer creates a Client using a generated EC P-256 key and the given test server's HTTP client.
 func testClientWithServer(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
@@ -71,7 +74,7 @@ func TestNewClient_Valid(t *testing.T) {
 }
 
 func TestGenerateJWT_Structure(t *testing.T) {
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	c := &Client{keyID: "kid1", issuerID: "iss1", privateKey: key, httpClient: http.DefaultClient}
 
 	token, err := c.generateJWT()
@@ -92,8 +95,8 @@ func TestGenerateJWT_Structure(t *testing.T) {
 	if err := json.Unmarshal(headerBytes, &header); err != nil {
 		t.Fatalf("unmarshal header: %v", err)
 	}
-	if header["alg"] != "RS256" {
-		t.Errorf("alg = %q, want RS256", header["alg"])
+	if header["alg"] != "ES256" {
+		t.Errorf("alg = %q, want ES256", header["alg"])
 	}
 	if header["kid"] != "kid1" {
 		t.Errorf("kid = %q, want kid1", header["kid"])
@@ -120,5 +123,33 @@ func TestGenerateJWT_Structure(t *testing.T) {
 	iat := int64(payload["iat"].(float64))
 	if exp-iat != 1200 {
 		t.Errorf("exp-iat = %d, want 1200", exp-iat)
+	}
+}
+
+func TestGenerateJWT_SignatureVerifiable(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	c := &Client{keyID: "kid1", issuerID: "iss1", privateKey: key, httpClient: http.DefaultClient}
+
+	token, err := c.generateJWT()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parts := strings.Split(token, ".")
+	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatalf("decode sig: %v", err)
+	}
+	if len(sigBytes) != 64 {
+		t.Fatalf("signature length = %d, want 64 (r||s for P-256)", len(sigBytes))
+	}
+
+	// Reconstruct and verify the signature
+	r := new(big.Int).SetBytes(sigBytes[:32])
+	s := new(big.Int).SetBytes(sigBytes[32:])
+	signingInput := parts[0] + "." + parts[1]
+	digest := sha256.Sum256([]byte(signingInput))
+	if !ecdsa.Verify(&key.PublicKey, digest[:], r, s) {
+		t.Error("JWT signature verification failed")
 	}
 }

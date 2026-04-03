@@ -1,16 +1,17 @@
 package appstore
 
 import (
-	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"time"
 )
@@ -21,7 +22,7 @@ var ascBaseURL = "https://api.appstoreconnect.apple.com"
 type Client struct {
 	keyID      string
 	issuerID   string
-	privateKey *rsa.PrivateKey
+	privateKey *ecdsa.PrivateKey
 	httpClient *http.Client
 }
 
@@ -45,38 +46,38 @@ func NewClient(keyB64, keyID, issuerID string) (*Client, error) {
 		return nil, fmt.Errorf("parse PKCS#8 key: %w", err)
 	}
 
-	// Type-assert to *rsa.PrivateKey
-	rsaKey, ok := privKey.(*rsa.PrivateKey)
+	// Type-assert to *ecdsa.PrivateKey (Apple .p8 keys are always EC keys)
+	ecKey, ok := privKey.(*ecdsa.PrivateKey)
 	if !ok {
-		return nil, fmt.Errorf("key is not an RSA private key")
+		return nil, fmt.Errorf("key is not an EC private key")
 	}
 
 	return &Client{
 		keyID:      keyID,
 		issuerID:   issuerID,
-		privateKey: rsaKey,
+		privateKey: ecKey,
 		httpClient: http.DefaultClient,
 	}, nil
 }
 
-// generateJWT creates a signed RS256 JWT for the ASC API.
-// Header: {"alg":"RS256","kid":keyID,"typ":"JWT"}
+// generateJWT creates a signed ES256 JWT for the ASC API.
+// Header: {"alg":"ES256","kid":keyID,"typ":"JWT"}
 // Payload: {"iss":issuerID,"iat":now,"exp":now+1200,"aud":"appstoreconnect-v1"}
-// Signature: RS256 using PKCS1v15
+// Signature: ES256 using ECDSA P-256, encoded as raw r||s (JWT P1363 format)
 func (c *Client) generateJWT() (string, error) {
 	now := time.Now().Unix()
 	exp := now + 1200
 
-	// Create header
+	// Create header — json.Marshal cannot fail for map[string]string
 	header := map[string]string{
-		"alg": "RS256",
+		"alg": "ES256",
 		"kid": c.keyID,
 		"typ": "JWT",
 	}
 	headerBytes, _ := json.Marshal(header)
 	headerB64 := base64.RawURLEncoding.EncodeToString(headerBytes)
 
-	// Create payload
+	// Create payload — json.Marshal cannot fail for map[string]interface{} with string/int values
 	payload := map[string]interface{}{
 		"iss": c.issuerID,
 		"iat": now,
@@ -86,16 +87,24 @@ func (c *Client) generateJWT() (string, error) {
 	payloadBytes, _ := json.Marshal(payload)
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadBytes)
 
-	// Create signature
-	message := headerB64 + "." + payloadB64
-	digest := sha256.Sum256([]byte(message))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, c.privateKey, crypto.SHA256, digest[:])
+	// Sign with ECDSA P-256
+	si := headerB64 + "." + payloadB64
+	digest := sha256.Sum256([]byte(si))
+	sig, err := ecdsa.SignASN1(rand.Reader, c.privateKey, digest[:])
 	if err != nil {
 		return "", fmt.Errorf("sign JWT: %w", err)
 	}
-	signatureB64 := base64.RawURLEncoding.EncodeToString(signature)
 
-	return message + "." + signatureB64, nil
+	// Convert DER-encoded ASN.1 signature to raw r||s (JWT ES256 / P1363 format)
+	var ecSig struct{ R, S *big.Int }
+	if _, err := asn1.Unmarshal(sig, &ecSig); err != nil {
+		return "", fmt.Errorf("parse EC signature: %w", err)
+	}
+	sigBytes := make([]byte, 64)
+	ecSig.R.FillBytes(sigBytes[:32])
+	ecSig.S.FillBytes(sigBytes[32:])
+
+	return si + "." + base64.RawURLEncoding.EncodeToString(sigBytes), nil
 }
 
 // do attaches a fresh JWT Authorization header and executes the request.
