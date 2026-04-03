@@ -153,3 +153,66 @@ func TestGenerateJWT_SignatureVerifiable(t *testing.T) {
 		t.Error("JWT signature verification failed")
 	}
 }
+
+func TestResolveAppID_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Query().Get("filter[bundleId]") != "com.example.app" {
+			t.Errorf("unexpected bundleId query param: %s", r.URL.Query().Get("filter[bundleId]"))
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"data":[{"id":"app-123","type":"apps"}]}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	id, err := resolveAppID(testClientWithServer(t, srv), "com.example.app")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "app-123" {
+		t.Errorf("id = %q, want app-123", id)
+	}
+}
+
+func TestResolveAppID_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	_, err := resolveAppID(testClientWithServer(t, srv), "com.missing.app")
+	if err == nil {
+		t.Fatal("expected error for missing app, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error, got: %v", err)
+	}
+}
+
+func TestResolveAppID_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+		w.Write([]byte(`unauthorized`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	_, err := resolveAppID(testClientWithServer(t, srv), "com.example.app")
+	if err == nil {
+		t.Fatal("expected error for 401, got nil")
+	}
+}

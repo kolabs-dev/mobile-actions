@@ -125,6 +125,35 @@ func checkStatus(resp *http.Response, expected int) error {
 	return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 }
 
+// resolveAppID returns the ASC app ID for the given bundle ID.
+func resolveAppID(c *Client, bundleID string) (string, error) {
+	url := fmt.Sprintf("%s/v1/apps?filter[bundleId]=%s", ascBaseURL, bundleID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("resolveAppID: %w", err)
+	}
+	resp, err := c.do(req)
+	if err != nil {
+		return "", fmt.Errorf("resolveAppID: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := checkStatus(resp, 200); err != nil {
+		return "", fmt.Errorf("resolveAppID: %w", err)
+	}
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("resolveAppID: decode: %w", err)
+	}
+	if len(result.Data) == 0 {
+		return "", fmt.Errorf("app with bundle ID %q not found", bundleID)
+	}
+	return result.Data[0].ID, nil
+}
+
 // PromoteBuild placeholder — will be replaced in Task 7.
 func PromoteBuild(c *Client, bundleID, version, buildNumber string) error {
 	return fmt.Errorf("not implemented")
