@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `kolabs-dev/mobile-actions/android-upload@v1` — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
 - `kolabs-dev/mobile-actions/android-promote@v1` — Promote an uploaded Android app to a Play Store track (alpha/beta/production)
 - `kolabs-dev/mobile-actions/ios-upload@v1` — Build, sign, and upload iOS apps (IPA) to App Store Connect/TestFlight
+- `kolabs-dev/mobile-actions/ios-promote@v1` — Submit an iOS build for App Store review
 
 ## Commands
 
@@ -28,7 +29,7 @@ CGO_ENABLED=0 go build -o bin/android-build ./cmd/android-build
 
 **Build all binaries for a platform:**
 ```bash
-for program in android-build android-sign android-upload android-promote ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
+for program in android-build android-sign android-upload android-promote ios-setup-signing ios-teardown-signing ios-build ios-upload ios-promote verify-checksums; do
   CGO_ENABLED=0 go build -o bin/$program ./cmd/$program
 done
 ```
@@ -64,6 +65,8 @@ Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They 
 2. **`ios-build`** — Auto-detects `.xcworkspace`, reads signing state JSON for profile UUID, generates `ExportOptions.plist` (method: `app-store` for both testflight and app-store destinations), runs `xcodebuild archive` + `xcodebuild -exportArchive`. Outputs `artifact-path`.
 3. **`ios-upload`** — Writes `.p8` key to `~/.appstoreconnect/private_keys/`, calls `iTMSTransporter`. Supports `--dry-run`.
 4. **`ios-teardown-signing`** — Reads signing state, deletes keychain, restores original keychain list, removes provisioning profile. Always non-fatal (logs warnings only).
+
+**`ios-promote`** is a separate standalone action (not part of the ios-upload pipeline). It takes a build already processed in TestFlight and submits it for App Store review via the ASC API, without requiring a full build or upload.
 
 ### Binary distribution and trust
 
