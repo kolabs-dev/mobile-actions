@@ -154,6 +154,37 @@ func resolveAppID(c *Client, bundleID string) (string, error) {
 	return result.Data[0].ID, nil
 }
 
+// findBuild returns the build ID for a specific version + build number.
+// The build must be fully processed (processingState=VALID).
+func findBuild(c *Client, appID, version, buildNumber string) (string, error) {
+	url := fmt.Sprintf("%s/v1/builds?filter[app]=%s&filter[version]=%s&filter[preReleaseVersion.version]=%s&filter[processingState]=VALID",
+		ascBaseURL, appID, buildNumber, version)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("findBuild: %w", err)
+	}
+	resp, err := c.do(req)
+	if err != nil {
+		return "", fmt.Errorf("findBuild: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := checkStatus(resp, 200); err != nil {
+		return "", fmt.Errorf("findBuild: %w", err)
+	}
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("findBuild: decode: %w", err)
+	}
+	if len(result.Data) == 0 {
+		return "", fmt.Errorf("build %s(%s) not found or still processing", version, buildNumber)
+	}
+	return result.Data[0].ID, nil
+}
+
 // PromoteBuild placeholder — will be replaced in Task 7.
 func PromoteBuild(c *Client, bundleID, version, buildNumber string) error {
 	return fmt.Errorf("not implemented")

@@ -216,3 +216,76 @@ func TestResolveAppID_ServerError(t *testing.T) {
 		t.Fatal("expected error for 401, got nil")
 	}
 }
+
+func TestFindBuild_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		q := r.URL.Query()
+		if q.Get("filter[app]") != "app-1" {
+			t.Errorf("unexpected filter[app]: %s", q.Get("filter[app]"))
+		}
+		if q.Get("filter[version]") != "42" {
+			t.Errorf("unexpected filter[version]: %s", q.Get("filter[version]"))
+		}
+		if q.Get("filter[preReleaseVersion.version]") != "1.2.3" {
+			t.Errorf("unexpected filter[preReleaseVersion.version]: %s", q.Get("filter[preReleaseVersion.version]"))
+		}
+		if q.Get("filter[processingState]") != "VALID" {
+			t.Errorf("unexpected processingState filter: %s", q.Get("filter[processingState]"))
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"data":[{"id":"build-abc","type":"builds"}]}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	id, err := findBuild(testClientWithServer(t, srv), "app-1", "1.2.3", "42")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "build-abc" {
+		t.Errorf("id = %q, want build-abc", id)
+	}
+}
+
+func TestFindBuild_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	_, err := findBuild(testClientWithServer(t, srv), "app-1", "1.2.3", "42")
+	if err == nil {
+		t.Fatal("expected error for missing build, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found or still processing") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestFindBuild_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`forbidden`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	_, err := findBuild(testClientWithServer(t, srv), "app-1", "1.2.3", "42")
+	if err == nil {
+		t.Fatal("expected error for 403, got nil")
+	}
+}
