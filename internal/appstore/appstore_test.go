@@ -289,3 +289,99 @@ func TestFindBuild_ServerError(t *testing.T) {
 		t.Fatal("expected error for 403, got nil")
 	}
 }
+
+func TestFindOrCreateVersion_Create(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/appStoreVersions" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+			return
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		data := body["data"].(map[string]interface{})
+		attrs := data["attributes"].(map[string]interface{})
+		if attrs["platform"] != "IOS" {
+			t.Errorf("platform = %v, want IOS", attrs["platform"])
+		}
+		if attrs["versionString"] != "1.2.3" {
+			t.Errorf("versionString = %v, want 1.2.3", attrs["versionString"])
+		}
+		w.WriteHeader(201)
+		w.Write([]byte(`{"data":{"id":"ver-1","type":"appStoreVersions"}}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	id, err := findOrCreateVersion(testClientWithServer(t, srv), "app-1", "1.2.3")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "ver-1" {
+		t.Errorf("id = %q, want ver-1", id)
+	}
+}
+
+func TestFindOrCreateVersion_ReuseExisting(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(409)
+			w.Write([]byte(`{"errors":[{"code":"VERSION_ALREADY_CREATED_WITH_SAME_VERSION_STRING"}]}`))
+			return
+		}
+		// GET existing version
+		if r.Method != http.MethodGet {
+			t.Errorf("call 2: expected GET, got %s", r.Method)
+		}
+		if r.URL.Query().Get("filter[versionString]") != "1.2.3" {
+			t.Errorf("call 2: unexpected versionString filter: %s", r.URL.Query().Get("filter[versionString]"))
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"data":[{"id":"ver-existing","type":"appStoreVersions","attributes":{"appStoreState":"PREPARE_FOR_SUBMISSION"}}]}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	id, err := findOrCreateVersion(testClientWithServer(t, srv), "app-1", "1.2.3")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "ver-existing" {
+		t.Errorf("id = %q, want ver-existing", id)
+	}
+}
+
+func TestFindOrCreateVersion_ExistingNonEditable(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(409)
+			w.Write([]byte(`{}`))
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"data":[{"id":"ver-2","type":"appStoreVersions","attributes":{"appStoreState":"WAITING_FOR_REVIEW"}}]}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	_, err := findOrCreateVersion(testClientWithServer(t, srv), "app-1", "1.2.3")
+	if err == nil {
+		t.Fatal("expected error for non-editable state, got nil")
+	}
+	if !strings.Contains(err.Error(), "WAITING_FOR_REVIEW") {
+		t.Errorf("expected state name in error, got: %v", err)
+	}
+}

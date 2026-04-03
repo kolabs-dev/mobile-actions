@@ -1,6 +1,7 @@
 package appstore
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
@@ -188,4 +189,98 @@ func findBuild(c *Client, appID, version, buildNumber string) (string, error) {
 // PromoteBuild placeholder — will be replaced in Task 7.
 func PromoteBuild(c *Client, bundleID, version, buildNumber string) error {
 	return fmt.Errorf("not implemented")
+}
+
+// findOrCreateVersion returns the App Store version ID for the given version string.
+// Creates it if it does not exist. If a version in PREPARE_FOR_SUBMISSION state already
+// exists, it is reused. Any other existing state is an error.
+func findOrCreateVersion(c *Client, appID, version string) (string, error) {
+	createURL := fmt.Sprintf("%s/v1/appStoreVersions", ascBaseURL)
+	body := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "appStoreVersions",
+			"attributes": map[string]interface{}{
+				"platform":      "IOS",
+				"versionString": version,
+			},
+			"relationships": map[string]interface{}{
+				"app": map[string]interface{}{
+					"data": map[string]interface{}{
+						"type": "apps",
+						"id":   appID,
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, createURL, bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("findOrCreateVersion: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.do(req)
+	if err != nil {
+		return "", fmt.Errorf("findOrCreateVersion: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 201 {
+		var result struct {
+			Data struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", fmt.Errorf("findOrCreateVersion: decode: %w", err)
+		}
+		return result.Data.ID, nil
+	}
+
+	if resp.StatusCode == 409 {
+		io.ReadAll(resp.Body) // drain
+		return findExistingVersion(c, appID, version)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	return "", fmt.Errorf("findOrCreateVersion: unexpected status %d: %s", resp.StatusCode, string(respBody))
+}
+
+// findExistingVersion looks up an existing App Store version by version string.
+// Only versions in PREPARE_FOR_SUBMISSION state may be reused.
+func findExistingVersion(c *Client, appID, version string) (string, error) {
+	url := fmt.Sprintf("%s/v1/apps/%s/appStoreVersions?filter[versionString]=%s&filter[platform]=IOS",
+		ascBaseURL, appID, version)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("findExistingVersion: %w", err)
+	}
+	resp, err := c.do(req)
+	if err != nil {
+		return "", fmt.Errorf("findExistingVersion: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := checkStatus(resp, 200); err != nil {
+		return "", fmt.Errorf("findExistingVersion: %w", err)
+	}
+	var result struct {
+		Data []struct {
+			ID         string `json:"id"`
+			Attributes struct {
+				AppStoreState string `json:"appStoreState"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("findExistingVersion: decode: %w", err)
+	}
+	if len(result.Data) == 0 {
+		return "", fmt.Errorf("App Store version %s not found after conflict", version)
+	}
+	v := result.Data[0]
+	if v.Attributes.AppStoreState != "PREPARE_FOR_SUBMISSION" {
+		return "", fmt.Errorf("App Store version %s already exists in state %s and cannot be edited",
+			version, v.Attributes.AppStoreState)
+	}
+	return v.ID, nil
 }
