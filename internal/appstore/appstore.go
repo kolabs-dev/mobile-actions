@@ -352,5 +352,9 @@ func submitForReview(c *Client, versionID string) error {
 		return fmt.Errorf("submitForReview: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 409 {
+		io.ReadAll(resp.Body) // already submitted — goal achieved
+		return nil
+	}
 	return checkStatus(resp, 201)
 }

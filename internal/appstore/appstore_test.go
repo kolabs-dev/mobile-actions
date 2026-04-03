@@ -467,8 +467,8 @@ func TestSubmitForReview_Success(t *testing.T) {
 
 func TestSubmitForReview_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(409)
-		w.Write([]byte(`already submitted`))
+		w.WriteHeader(422)
+		w.Write([]byte(`unprocessable entity`))
 	}))
 	defer srv.Close()
 
@@ -477,7 +477,23 @@ func TestSubmitForReview_ServerError(t *testing.T) {
 	defer func() { ascBaseURL = orig }()
 
 	if err := submitForReview(testClientWithServer(t, srv), "ver-1"); err == nil {
-		t.Fatal("expected error for 409, got nil")
+		t.Fatal("expected error for 422, got nil")
+	}
+}
+
+func TestSubmitForReview_AlreadySubmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(409)
+		w.Write([]byte(`{"errors":[{"code":"ENTITY_ERROR.ATTRIBUTE.INVALID"}]}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := submitForReview(testClientWithServer(t, srv), "ver-1"); err != nil {
+		t.Fatalf("expected nil for already-submitted 409, got: %v", err)
 	}
 }
 
