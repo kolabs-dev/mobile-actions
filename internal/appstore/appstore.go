@@ -186,9 +186,26 @@ func findBuild(c *Client, appID, version, buildNumber string) (string, error) {
 	return result.Data[0].ID, nil
 }
 
-// PromoteBuild placeholder — will be replaced in Task 7.
+// PromoteBuild submits a TestFlight-processed build for App Store review.
+// It resolves app and build IDs, creates or reuses an App Store version,
+// attaches the build, and submits for review (fire-and-forget).
 func PromoteBuild(c *Client, bundleID, version, buildNumber string) error {
-	return fmt.Errorf("not implemented")
+	appID, err := resolveAppID(c, bundleID)
+	if err != nil {
+		return err
+	}
+	buildID, err := findBuild(c, appID, version, buildNumber)
+	if err != nil {
+		return err
+	}
+	versionID, err := findOrCreateVersion(c, appID, version)
+	if err != nil {
+		return err
+	}
+	if err := attachBuild(c, versionID, buildID); err != nil {
+		return err
+	}
+	return submitForReview(c, versionID)
 }
 
 // findOrCreateVersion returns the App Store version ID for the given version string.

@@ -480,3 +480,66 @@ func TestSubmitForReview_ServerError(t *testing.T) {
 		t.Fatal("expected error for 409, got nil")
 	}
 }
+
+func TestPromoteBuild_HappyPath(t *testing.T) {
+	calls := []string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/apps":
+			w.Write([]byte(`{"data":[{"id":"app-1"}]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/builds":
+			w.Write([]byte(`{"data":[{"id":"build-1"}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/appStoreVersions":
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"ver-1"}}`))
+		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/relationships/build"):
+			w.WriteHeader(204)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/appStoreVersionSubmissions":
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"sub-1"}}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(calls) != 5 {
+		t.Errorf("expected 5 API calls, got %d: %v", len(calls), calls)
+	}
+}
+
+func TestPromoteBuild_BuildNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/apps":
+			w.Write([]byte(`{"data":[{"id":"app-1"}]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/builds":
+			w.Write([]byte(`{"data":[]}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42")
+	if err == nil {
+		t.Fatal("expected error for missing build, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found or still processing") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
