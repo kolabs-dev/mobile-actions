@@ -385,3 +385,49 @@ func TestFindOrCreateVersion_ExistingNonEditable(t *testing.T) {
 		t.Errorf("expected state name in error, got: %v", err)
 	}
 }
+
+func TestAttachBuild_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("expected PATCH, got %s", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, "/v1/appStoreVersions/ver-1/relationships/build") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		data := body["data"].(map[string]interface{})
+		if data["type"] != "builds" {
+			t.Errorf("type = %v, want builds", data["type"])
+		}
+		if data["id"] != "build-1" {
+			t.Errorf("id = %v, want build-1", data["id"])
+		}
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := attachBuild(testClientWithServer(t, srv), "ver-1", "build-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAttachBuild_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(422)
+		w.Write([]byte(`unprocessable entity`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := attachBuild(testClientWithServer(t, srv), "ver-1", "build-1"); err == nil {
+		t.Fatal("expected error for 422, got nil")
+	}
+}

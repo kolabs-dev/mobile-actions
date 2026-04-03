@@ -284,3 +284,26 @@ func findExistingVersion(c *Client, appID, version string) (string, error) {
 	}
 	return v.ID, nil
 }
+
+// attachBuild sets the build on an App Store version.
+func attachBuild(c *Client, versionID, buildID string) error {
+	url := fmt.Sprintf("%s/v1/appStoreVersions/%s/relationships/build", ascBaseURL, versionID)
+	body := map[string]interface{}{
+		"data": map[string]string{
+			"type": "builds",
+			"id":   buildID,
+		},
+	}
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("attachBuild: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.do(req)
+	if err != nil {
+		return fmt.Errorf("attachBuild: %w", err)
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp, 204)
+}
