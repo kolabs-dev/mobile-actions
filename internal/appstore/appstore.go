@@ -307,3 +307,33 @@ func attachBuild(c *Client, versionID, buildID string) error {
 	defer resp.Body.Close()
 	return checkStatus(resp, 204)
 }
+
+// submitForReview submits an App Store version for review. Fire-and-forget.
+func submitForReview(c *Client, versionID string) error {
+	url := fmt.Sprintf("%s/v1/appStoreVersionSubmissions", ascBaseURL)
+	body := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "appStoreVersionSubmissions",
+			"relationships": map[string]interface{}{
+				"appStoreVersion": map[string]interface{}{
+					"data": map[string]interface{}{
+						"type": "appStoreVersions",
+						"id":   versionID,
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("submitForReview: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.do(req)
+	if err != nil {
+		return fmt.Errorf("submitForReview: %w", err)
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp, 201)
+}

@@ -431,3 +431,52 @@ func TestAttachBuild_ServerError(t *testing.T) {
 		t.Fatal("expected error for 422, got nil")
 	}
 }
+
+func TestSubmitForReview_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/appStoreVersionSubmissions" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+			return
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		data := body["data"].(map[string]interface{})
+		if data["type"] != "appStoreVersionSubmissions" {
+			t.Errorf("type = %v, want appStoreVersionSubmissions", data["type"])
+		}
+		rels := data["relationships"].(map[string]interface{})
+		ver := rels["appStoreVersion"].(map[string]interface{})
+		verData := ver["data"].(map[string]interface{})
+		if verData["id"] != "ver-1" {
+			t.Errorf("version id = %v, want ver-1", verData["id"])
+		}
+		w.WriteHeader(201)
+		w.Write([]byte(`{"data":{"id":"sub-1","type":"appStoreVersionSubmissions"}}`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := submitForReview(testClientWithServer(t, srv), "ver-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSubmitForReview_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(409)
+		w.Write([]byte(`already submitted`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := submitForReview(testClientWithServer(t, srv), "ver-1"); err == nil {
+		t.Fatal("expected error for 409, got nil")
+	}
+}
