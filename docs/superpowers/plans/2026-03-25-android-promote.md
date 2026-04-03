@@ -992,8 +992,8 @@ Make the following changes to `CLAUDE.md`:
 
 Find:
 ```
-- `kolabs-dev/mobile-actions/android@v1` — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
-- `kolabs-dev/mobile-actions/ios@v1` — Build, sign, and upload iOS apps (IPA) to App Store Connect/TestFlight
+- `kolabs-dev/mobile-actions/android-upload@v1` — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
+- `kolabs-dev/mobile-actions/ios-upload@v1` — Build, sign, and upload iOS apps (IPA) to App Store Connect/TestFlight
 ```
 
 Replace with:

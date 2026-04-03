@@ -8,8 +8,8 @@
 `mobile-actions` is a GitHub Actions repository that provides reusable composite actions for automating the full release pipeline of mobile apps (React Native, Flutter, bare Expo, or native Android/iOS) to the Google Play Store and Apple App Store.
 
 It exposes two composite actions:
-- `your-org/mobile-actions/android@v1` — build, sign, and upload an Android AAB/APK to the Play Store
-- `your-org/mobile-actions/ios@v1` — build, sign, and upload an iOS IPA to App Store Connect or TestFlight
+- `your-org/mobile-actions/android-upload@v1` — build, sign, and upload an Android AAB/APK to the Play Store
+- `your-org/mobile-actions/ios-upload@v1` — build, sign, and upload an iOS IPA to App Store Connect or TestFlight
 
 ---
 
@@ -557,7 +557,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: your-org/mobile-actions/android@v1
+      - uses: your-org/mobile-actions/android-upload@v1
         with:
           keystore: ${{ secrets.ANDROID_KEYSTORE }}
           keystore-password: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -572,7 +572,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: your-org/mobile-actions/ios@v1
+      - uses: your-org/mobile-actions/ios-upload@v1
         with:
           scheme: MyApp
           bundle-id: com.myapp

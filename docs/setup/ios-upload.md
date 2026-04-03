@@ -1,6 +1,6 @@
 # iOS Setup Guide
 
-This guide walks you through setting up the `kolabs-dev/mobile-actions/ios@v1` action from scratch. By the end, you will have a GitHub Actions workflow that builds, signs, and uploads your iOS app to TestFlight or the App Store automatically on every tagged release.
+This guide walks you through setting up the `kolabs-dev/mobile-actions/ios-upload@v1` action from scratch. By the end, you will have a GitHub Actions workflow that builds, signs, and uploads your iOS app to TestFlight or the App Store automatically on every tagged release.
 
 It assumes you have built an iOS app but have never automated publishing before.
 
@@ -173,7 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kolabs-dev/mobile-actions/ios@v1
+      - uses: kolabs-dev/mobile-actions/ios-upload@v1
         with:
           app-path: ios
           scheme: MyApp
