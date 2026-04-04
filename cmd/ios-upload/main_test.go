@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/base64"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -106,5 +107,21 @@ func TestInstallP8Key_FilePermissions(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0600 {
 		t.Fatalf("expected mode 0600, got %v", info.Mode().Perm())
+	}
+}
+
+func TestResolveAltool_ReturnsPath(t *testing.T) {
+	if _, err := exec.LookPath("xcrun"); err != nil {
+		t.Skip("xcrun not available")
+	}
+	path, err := resolveAltool()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path == "" {
+		t.Fatal("expected non-empty path")
+	}
+	if !strings.Contains(path, "altool") {
+		t.Fatalf("expected path to contain 'altool', got %q", path)
 	}
 }

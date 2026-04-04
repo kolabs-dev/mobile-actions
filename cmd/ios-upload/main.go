@@ -32,7 +32,7 @@ func run() error {
 		return fmt.Errorf("INPUT_APP_STORE_CONNECT_KEY, INPUT_APP_STORE_CONNECT_KEY_ID, INPUT_APP_STORE_CONNECT_ISSUER_ID, and INPUT_ARTIFACT_PATH are required")
 	}
 
-	itmsPath, err := resolveITMSTransporter()
+	altoolPath, err := resolveAltool()
 	if err != nil {
 		return err
 	}
@@ -44,54 +44,31 @@ func run() error {
 	defer cleanP8()
 
 	if *dryRun {
-		fmt.Printf("[dry-run] would run: %s -m upload -f %s -apiKey %s -apiIssuer %s (key at %s)\n",
-			itmsPath, ipaPath, keyID, issuerID, p8Path)
+		fmt.Printf("[dry-run] would run: %s --upload-app -f %s --api-key %s --api-issuer %s (key at %s)\n",
+			altoolPath, ipaPath, keyID, issuerID, p8Path)
 		return nil
 	}
 
-	actions.Group("Uploading IPA via iTMSTransporter")
-	err = intexec.Run(itmsPath,
-		"-m", "upload",
+	actions.Group("Uploading IPA via altool")
+	err = intexec.Run(altoolPath,
+		"--upload-app",
 		"-f", ipaPath,
-		"-apiKey", keyID,
-		"-apiIssuer", issuerID,
+		"--api-key", keyID,
+		"--api-issuer", issuerID,
 	)
 	actions.EndGroup()
 	if err != nil {
-		return fmt.Errorf("iTMSTransporter upload: %w", err)
+		return fmt.Errorf("altool upload: %w", err)
 	}
 
 	fmt.Println("upload complete")
 	return nil
 }
 
-func resolveITMSTransporter() (string, error) {
-	// In Xcode 26.3+, the iTMSTransporter bundled with Xcode is a non-functional
-	// stub that exits 1 with "iTMSTransporter is now part of Transporter."
-	// Check the standalone Transporter.app (Mac App Store) first, as that's where
-	// the real binary lives on newer Xcode versions.
-	transporterAppPath := "/Applications/Transporter.app/Contents/itms/bin/iTMSTransporter"
-	if _, err := os.Stat(transporterAppPath); err == nil {
-		return transporterAppPath, nil
-	}
-
-	// Try xcrun — works for older Xcode versions where the bundled binary is real.
-	if path, err := intexec.RunOutput("xcrun", "-find", "iTMSTransporter"); err == nil && path != "" {
-		return path, nil
-	}
-
-	// Fall back to manual path resolution for older Xcode installations.
-	developerDir, err := intexec.RunOutput("xcode-select", "-p")
-	if err != nil {
-		return "", fmt.Errorf("xcode-select -p: %w", err)
-	}
-	xcodeContents := filepath.Dir(developerDir)
-	path := filepath.Join(xcodeContents,
-		"SharedFrameworks",
-		"ContentDeliveryServices.framework",
-		"Versions", "A", "itms", "bin", "iTMSTransporter")
-	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("iTMSTransporter not found at %s: %w", path, err)
+func resolveAltool() (string, error) {
+	path, err := intexec.RunOutput("xcrun", "-find", "altool")
+	if err != nil || path == "" {
+		return "", fmt.Errorf("altool not found via xcrun — ensure Xcode is installed")
 	}
 	return path, nil
 }
