@@ -91,6 +91,7 @@ func run() error {
 		"-configuration", "Release",
 		"-destination", "generic/platform=iOS",
 		"-archivePath", archivePath,
+		"-quiet",
 		"CODE_SIGN_STYLE=Manual",
 		"CODE_SIGN_IDENTITY=Apple Distribution",
 		"DEVELOPMENT_TEAM="+teamID,
@@ -107,6 +108,7 @@ func run() error {
 		"-archivePath", archivePath,
 		"-exportOptionsPlist", exportOptionsPath,
 		"-exportPath", exportPath,
+		"-quiet",
 	)
 	actions.EndGroup()
 	if err != nil {

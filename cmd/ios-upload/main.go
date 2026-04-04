@@ -66,7 +66,16 @@ func run() error {
 }
 
 func resolveITMSTransporter() (string, error) {
-	// Try xcrun first — works across Xcode versions regardless of install path.
+	// In Xcode 26.3+, the iTMSTransporter bundled with Xcode is a non-functional
+	// stub that exits 1 with "iTMSTransporter is now part of Transporter."
+	// Check the standalone Transporter.app (Mac App Store) first, as that's where
+	// the real binary lives on newer Xcode versions.
+	transporterAppPath := "/Applications/Transporter.app/Contents/itms/bin/iTMSTransporter"
+	if _, err := os.Stat(transporterAppPath); err == nil {
+		return transporterAppPath, nil
+	}
+
+	// Try xcrun — works for older Xcode versions where the bundled binary is real.
 	if path, err := intexec.RunOutput("xcrun", "-find", "iTMSTransporter"); err == nil && path != "" {
 		return path, nil
 	}
