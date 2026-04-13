@@ -255,7 +255,8 @@ func findOrCreateVersion(c *Client, appID, version string) (string, error) {
 	}
 
 	if resp.StatusCode == 409 {
-		io.ReadAll(resp.Body) // drain
+		conflictBody, _ := io.ReadAll(resp.Body)
+		fmt.Printf("findOrCreateVersion: 409 conflict creating version %s: %s\n", version, string(conflictBody))
 		return findExistingVersion(c, appID, version)
 	}
 
@@ -266,7 +267,7 @@ func findOrCreateVersion(c *Client, appID, version string) (string, error) {
 // findExistingVersion looks up an existing App Store version by version string.
 // Only versions in PREPARE_FOR_SUBMISSION state may be reused.
 func findExistingVersion(c *Client, appID, version string) (string, error) {
-	url := fmt.Sprintf("%s/v1/apps/%s/appStoreVersions?filter[versionString]=%s&filter[platform]=IOS",
+	url := fmt.Sprintf("%s/v1/apps/%s/appStoreVersions?filter[versionString]=%s&filter[platform]=IOS&filter[appStoreState]=PREPARE_FOR_SUBMISSION,WAITING_FOR_REVIEW,IN_REVIEW,PENDING_CONTRACT,WAITING_FOR_EXPORT_COMPLIANCE,PENDING_DEVELOPER_RELEASE,PROCESSING_FOR_APP_STORE,READY_FOR_SALE,REPLACED_WITH_NEW_VERSION,DEVELOPER_REMOVED_FROM_SALE,REMOVED_FROM_SALE,DEVELOPER_REJECTED,REJECTED,METADATA_REJECTED",
 		ascBaseURL, appID, version)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
