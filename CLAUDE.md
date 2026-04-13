@@ -43,7 +43,7 @@ go vet ./...
 
 ### Structure
 
-Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They communicate via `$GITHUB_OUTPUT` and the filesystem. The composite actions in `android-upload/action.yml`, `android-promote/action.yml`, and `ios-upload/action.yml` orchestrate the binaries.
+Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They communicate via `$GITHUB_OUTPUT` and the filesystem. The composite actions in `android-upload/action.yml`, `android-promote/action.yml`, `ios-upload/action.yml`, and `ios-promote/action.yml` orchestrate the binaries.
 
 ### Shared packages (`internal/`)
 

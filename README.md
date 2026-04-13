@@ -1,10 +1,11 @@
 # mobile-actions
 
-Reusable GitHub Actions for automating mobile app releases. Provides three composite actions:
+Reusable GitHub Actions for automating mobile app releases. Provides four composite actions:
 
 - **`kolabs-dev/mobile-actions/android-upload@v1`** — Build, sign, and upload Android apps (AAB/APK) to Google Play Store
 - **`kolabs-dev/mobile-actions/android-promote@v1`** — Promote an uploaded Android app to a Play Store track (alpha/beta/production)
 - **`kolabs-dev/mobile-actions/ios-upload@v1`** — Build, sign, and upload iOS apps (IPA) to App Store Connect / TestFlight
+- **`kolabs-dev/mobile-actions/ios-promote@v1`** — Submit an already-uploaded iOS build for App Store review
 
 ## Android Upload Action
 
@@ -258,6 +259,74 @@ jobs:
 
 ---
 
+## iOS Promote Action
+
+Submits an already-uploaded iOS build for App Store review. Use this after `ios-upload` — or any process that has delivered a build to TestFlight — to initiate the review submission for a specific version and build number. No build or signing credentials are required.
+
+### Usage
+
+```yaml
+- uses: kolabs-dev/mobile-actions/ios-promote@v1
+  with:
+    app-store-connect-key: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+    app-store-connect-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+    app-store-connect-issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+    bundle-id: com.example.myapp
+    version: 1.2.3
+    build-number: ${{ github.run_number }}
+```
+
+### Inputs
+
+| Input | Required | Description |
+|-------|----------|-------------|
+| `app-store-connect-key` | **Yes** | Base64-encoded `.p8` API key |
+| `app-store-connect-key-id` | **Yes** | App Store Connect key ID (e.g. `ABCD123456`) |
+| `app-store-connect-issuer-id` | **Yes** | App Store Connect issuer ID (UUID format) |
+| `bundle-id` | **Yes** | App bundle identifier (e.g. `com.myapp`) |
+| `version` | **Yes** | Version string to submit (e.g. `1.2.3`) |
+| `build-number` | **Yes** | Build number to submit (e.g. `42`) |
+
+### Full example
+
+A common pattern is to upload to TestFlight on every merge and use a manual workflow dispatch to submit for review:
+
+```yaml
+# .github/workflows/ios-promote.yml
+name: Submit for App Store Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string (e.g. 1.2.3)'
+        required: true
+      build-number:
+        description: 'Build number to submit'
+        required: true
+
+jobs:
+  promote:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: kolabs-dev/mobile-actions/ios-promote@v1
+        with:
+          app-store-connect-key: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+          app-store-connect-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          app-store-connect-issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          bundle-id: com.example.myapp
+          version: ${{ inputs.version }}
+          build-number: ${{ inputs.build-number }}
+```
+
+> **Note:** The build must have completed Apple's processing in TestFlight before it can be submitted for review.
+
+> First time? See the [iOS Promote setup guide](docs/setup/ios-promote.md) for usage patterns including combined upload-and-promote workflows and manual release gates.
+
+---
+
 ## Development
 
 ### Building binaries locally
@@ -271,7 +340,7 @@ CGO_ENABLED=0 go build -o bin/android-build ./cmd/android-build
 
 Build all binaries for the current platform:
 ```bash
-for program in android-build android-sign android-upload android-promote ios-setup-signing ios-teardown-signing ios-build ios-upload verify-checksums; do
+for program in android-build android-sign android-upload android-promote ios-setup-signing ios-teardown-signing ios-build ios-upload ios-promote verify-checksums; do
   CGO_ENABLED=0 go build -o bin/$program ./cmd/$program
 done
 ```
