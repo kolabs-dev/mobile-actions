@@ -9,6 +9,7 @@ jobs:
       matrix:
         include:
           - { goos: linux,  goarch: amd64, runs-on: ubuntu-latest }
+          - { goos: linux,  goarch: arm64, runs-on: ubuntu-latest }
           - { goos: darwin, goarch: arm64, runs-on: macos-latest  }
     runs-on: ${{ matrix.runs-on }}
     steps:
