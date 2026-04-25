@@ -433,26 +433,66 @@ func TestAttachBuild_ServerError(t *testing.T) {
 }
 
 func TestSubmitForReview_Success(t *testing.T) {
+	calls := []string{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/appStoreVersionSubmissions" {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/reviewSubmissions":
+			var body map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&body)
+			data := body["data"].(map[string]interface{})
+			if data["type"] != "reviewSubmissions" {
+				t.Errorf("reviewSubmissions type = %v, want reviewSubmissions", data["type"])
+			}
+			attrs := data["attributes"].(map[string]interface{})
+			if attrs["platform"] != "IOS" {
+				t.Errorf("platform = %v, want IOS", attrs["platform"])
+			}
+			rels := data["relationships"].(map[string]interface{})
+			app := rels["app"].(map[string]interface{})
+			appData := app["data"].(map[string]interface{})
+			if appData["id"] != "app-1" {
+				t.Errorf("app id = %v, want app-1", appData["id"])
+			}
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"sub-1","type":"reviewSubmissions"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/reviewSubmissionItems":
+			var body map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&body)
+			data := body["data"].(map[string]interface{})
+			if data["type"] != "reviewSubmissionItems" {
+				t.Errorf("reviewSubmissionItems type = %v, want reviewSubmissionItems", data["type"])
+			}
+			rels := data["relationships"].(map[string]interface{})
+			sub := rels["reviewSubmission"].(map[string]interface{})
+			subData := sub["data"].(map[string]interface{})
+			if subData["id"] != "sub-1" {
+				t.Errorf("submission id = %v, want sub-1", subData["id"])
+			}
+			ver := rels["appStoreVersion"].(map[string]interface{})
+			verData := ver["data"].(map[string]interface{})
+			if verData["id"] != "ver-1" {
+				t.Errorf("version id = %v, want ver-1", verData["id"])
+			}
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"item-1","type":"reviewSubmissionItems"}}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/reviewSubmissions/sub-1":
+			var body map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&body)
+			data := body["data"].(map[string]interface{})
+			if data["id"] != "sub-1" {
+				t.Errorf("submission id = %v, want sub-1", data["id"])
+			}
+			attrs := data["attributes"].(map[string]interface{})
+			if attrs["submitted"] != true {
+				t.Errorf("submitted = %v, want true", attrs["submitted"])
+			}
+			w.WriteHeader(200)
+			w.Write([]byte(`{"data":{"id":"sub-1","type":"reviewSubmissions"}}`))
+		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(500)
-			return
 		}
-		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
-		data := body["data"].(map[string]interface{})
-		if data["type"] != "appStoreVersionSubmissions" {
-			t.Errorf("type = %v, want appStoreVersionSubmissions", data["type"])
-		}
-		rels := data["relationships"].(map[string]interface{})
-		ver := rels["appStoreVersion"].(map[string]interface{})
-		verData := ver["data"].(map[string]interface{})
-		if verData["id"] != "ver-1" {
-			t.Errorf("version id = %v, want ver-1", verData["id"])
-		}
-		w.WriteHeader(201)
-		w.Write([]byte(`{"data":{"id":"sub-1","type":"appStoreVersionSubmissions"}}`))
 	}))
 	defer srv.Close()
 
@@ -460,8 +500,11 @@ func TestSubmitForReview_Success(t *testing.T) {
 	ascBaseURL = srv.URL
 	defer func() { ascBaseURL = orig }()
 
-	if err := submitForReview(testClientWithServer(t, srv), "ver-1"); err != nil {
+	if err := submitForReview(testClientWithServer(t, srv), "app-1", "ver-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(calls) != 3 {
+		t.Errorf("expected 3 API calls, got %d: %v", len(calls), calls)
 	}
 }
 
@@ -476,24 +519,8 @@ func TestSubmitForReview_ServerError(t *testing.T) {
 	ascBaseURL = srv.URL
 	defer func() { ascBaseURL = orig }()
 
-	if err := submitForReview(testClientWithServer(t, srv), "ver-1"); err == nil {
+	if err := submitForReview(testClientWithServer(t, srv), "app-1", "ver-1"); err == nil {
 		t.Fatal("expected error for 422, got nil")
-	}
-}
-
-func TestSubmitForReview_AlreadySubmitted(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(409)
-		w.Write([]byte(`{"errors":[{"code":"ENTITY_ERROR.ATTRIBUTE.INVALID"}]}`))
-	}))
-	defer srv.Close()
-
-	orig := ascBaseURL
-	ascBaseURL = srv.URL
-	defer func() { ascBaseURL = orig }()
-
-	if err := submitForReview(testClientWithServer(t, srv), "ver-1"); err != nil {
-		t.Fatalf("expected nil for already-submitted 409, got: %v", err)
 	}
 }
 
@@ -511,8 +538,14 @@ func TestPromoteBuild_HappyPath(t *testing.T) {
 			w.Write([]byte(`{"data":{"id":"ver-1"}}`))
 		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/relationships/build"):
 			w.WriteHeader(204)
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/appStoreVersionSubmissions":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/reviewSubmissions":
 			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"sub-1"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/reviewSubmissionItems":
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"item-1"}}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/reviewSubmissions/sub-1":
+			w.WriteHeader(200)
 			w.Write([]byte(`{"data":{"id":"sub-1"}}`))
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -528,8 +561,8 @@ func TestPromoteBuild_HappyPath(t *testing.T) {
 	if err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(calls) != 5 {
-		t.Errorf("expected 5 API calls, got %d: %v", len(calls), calls)
+	if len(calls) != 7 {
+		t.Errorf("expected 7 API calls, got %d: %v", len(calls), calls)
 	}
 }
 

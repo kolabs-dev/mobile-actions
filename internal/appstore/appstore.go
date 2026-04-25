@@ -205,7 +205,7 @@ func PromoteBuild(c *Client, bundleID, version, buildNumber string) error {
 	if err := attachBuild(c, versionID, buildID); err != nil {
 		return err
 	}
-	return submitForReview(c, versionID)
+	return submitForReview(c, appID, versionID)
 }
 
 // findOrCreateVersion returns the App Store version ID for the given version string.
@@ -326,13 +326,63 @@ func attachBuild(c *Client, versionID, buildID string) error {
 	return checkStatus(resp, 204)
 }
 
-// submitForReview submits an App Store version for review. Fire-and-forget.
-func submitForReview(c *Client, versionID string) error {
-	url := fmt.Sprintf("%s/v1/appStoreVersionSubmissions", ascBaseURL)
-	body := map[string]interface{}{
+// submitForReview submits an App Store version for review using the reviewSubmissions API.
+// Three steps: create submission → add version item → PATCH submitted:true.
+func submitForReview(c *Client, appID, versionID string) error {
+	// Step 1: create the review submission
+	subURL := fmt.Sprintf("%s/v1/reviewSubmissions", ascBaseURL)
+	subBody := map[string]interface{}{
 		"data": map[string]interface{}{
-			"type": "appStoreVersionSubmissions",
+			"type": "reviewSubmissions",
+			"attributes": map[string]interface{}{
+				"platform": "IOS",
+			},
 			"relationships": map[string]interface{}{
+				"app": map[string]interface{}{
+					"data": map[string]interface{}{
+						"type": "apps",
+						"id":   appID,
+					},
+				},
+			},
+		},
+	}
+	subData, _ := json.Marshal(subBody)
+	subReq, err := http.NewRequest(http.MethodPost, subURL, bytes.NewReader(subData))
+	if err != nil {
+		return fmt.Errorf("submitForReview: create submission: %w", err)
+	}
+	subReq.Header.Set("Content-Type", "application/json")
+	subResp, err := c.do(subReq)
+	if err != nil {
+		return fmt.Errorf("submitForReview: create submission: %w", err)
+	}
+	defer subResp.Body.Close()
+	if err := checkStatus(subResp, 201); err != nil {
+		return fmt.Errorf("submitForReview: create submission: %w", err)
+	}
+	var subResult struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(subResp.Body).Decode(&subResult); err != nil {
+		return fmt.Errorf("submitForReview: decode submission: %w", err)
+	}
+	submissionID := subResult.Data.ID
+
+	// Step 2: add the App Store version as a submission item
+	itemURL := fmt.Sprintf("%s/v1/reviewSubmissionItems", ascBaseURL)
+	itemBody := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "reviewSubmissionItems",
+			"relationships": map[string]interface{}{
+				"reviewSubmission": map[string]interface{}{
+					"data": map[string]interface{}{
+						"type": "reviewSubmissions",
+						"id":   submissionID,
+					},
+				},
 				"appStoreVersion": map[string]interface{}{
 					"data": map[string]interface{}{
 						"type": "appStoreVersions",
@@ -342,20 +392,44 @@ func submitForReview(c *Client, versionID string) error {
 			},
 		},
 	}
-	data, _ := json.Marshal(body)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	itemData, _ := json.Marshal(itemBody)
+	itemReq, err := http.NewRequest(http.MethodPost, itemURL, bytes.NewReader(itemData))
 	if err != nil {
-		return fmt.Errorf("submitForReview: %w", err)
+		return fmt.Errorf("submitForReview: add item: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.do(req)
+	itemReq.Header.Set("Content-Type", "application/json")
+	itemResp, err := c.do(itemReq)
 	if err != nil {
-		return fmt.Errorf("submitForReview: %w", err)
+		return fmt.Errorf("submitForReview: add item: %w", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 409 {
-		io.ReadAll(resp.Body) // already submitted — goal achieved
-		return nil
+	defer itemResp.Body.Close()
+	if err := checkStatus(itemResp, 201); err != nil {
+		return fmt.Errorf("submitForReview: add item: %w", err)
 	}
-	return checkStatus(resp, 201)
+	io.ReadAll(itemResp.Body)
+
+	// Step 3: set submitted:true to trigger review
+	patchURL := fmt.Sprintf("%s/v1/reviewSubmissions/%s", ascBaseURL, submissionID)
+	patchBody := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "reviewSubmissions",
+			"id":   submissionID,
+			"attributes": map[string]interface{}{
+				"submitted": true,
+			},
+		},
+	}
+	patchData, _ := json.Marshal(patchBody)
+	patchReq, err := http.NewRequest(http.MethodPatch, patchURL, bytes.NewReader(patchData))
+	if err != nil {
+		return fmt.Errorf("submitForReview: submit: %w", err)
+	}
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := c.do(patchReq)
+	if err != nil {
+		return fmt.Errorf("submitForReview: submit: %w", err)
+	}
+	defer patchResp.Body.Close()
+	io.ReadAll(patchResp.Body)
+	return checkStatus(patchResp, 200)
 }
