@@ -20,6 +20,10 @@ inputs:
   build-number:
     description: 'Build number (e.g. 42)'
     required: true
+  whats-new:
+    description: "What's new text for the App Store version localization (required by App Store Connect)"
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -72,4 +76,5 @@ runs:
         INPUT_BUNDLE_ID: ${{ inputs.bundle-id }}
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_BUILD_NUMBER: ${{ inputs.build-number }}
+        INPUT_WHATS_NEW: ${{ inputs.whats-new }}
       run: $MOBILE_ACTIONS_BIN/ios-promote-$MOBILE_ACTIONS_OS_ARCH

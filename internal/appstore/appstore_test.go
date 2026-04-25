@@ -524,7 +524,111 @@ func TestSubmitForReview_ServerError(t *testing.T) {
 	}
 }
 
+func TestUpdateLocalization_Success(t *testing.T) {
+	calls := []string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/appStoreVersions/ver-1/appStoreVersionLocalizations":
+			w.WriteHeader(200)
+			w.Write([]byte(`{"data":[{"id":"loc-1"},{"id":"loc-2"}]}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/appStoreVersionLocalizations/loc-1":
+			var body map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&body)
+			data := body["data"].(map[string]interface{})
+			attrs := data["attributes"].(map[string]interface{})
+			if attrs["whatsNew"] != "Bug fixes and improvements" {
+				t.Errorf("loc-1 whatsNew = %v, want 'Bug fixes and improvements'", attrs["whatsNew"])
+			}
+			w.WriteHeader(200)
+			w.Write([]byte(`{"data":{"id":"loc-1"}}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/appStoreVersionLocalizations/loc-2":
+			w.WriteHeader(200)
+			w.Write([]byte(`{"data":{"id":"loc-2"}}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := updateLocalization(testClientWithServer(t, srv), "ver-1", "Bug fixes and improvements"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(calls) != 3 {
+		t.Errorf("expected 3 API calls (1 GET + 2 PATCH), got %d: %v", len(calls), calls)
+	}
+}
+
+func TestUpdateLocalization_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte(`internal error`))
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := updateLocalization(testClientWithServer(t, srv), "ver-1", "text"); err == nil {
+		t.Fatal("expected error for 500, got nil")
+	}
+}
+
 func TestPromoteBuild_HappyPath(t *testing.T) {
+	calls := []string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/apps":
+			w.Write([]byte(`{"data":[{"id":"app-1"}]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/builds":
+			w.Write([]byte(`{"data":[{"id":"build-1"}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/appStoreVersions":
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"ver-1"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/appStoreVersions/ver-1/appStoreVersionLocalizations":
+			w.WriteHeader(200)
+			w.Write([]byte(`{"data":[{"id":"loc-1"}]}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/appStoreVersionLocalizations/loc-1":
+			w.WriteHeader(200)
+			w.Write([]byte(`{"data":{"id":"loc-1"}}`))
+		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/relationships/build"):
+			w.WriteHeader(204)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/reviewSubmissions":
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"sub-1"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/reviewSubmissionItems":
+			w.WriteHeader(201)
+			w.Write([]byte(`{"data":{"id":"item-1"}}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/reviewSubmissions/sub-1":
+			w.WriteHeader(200)
+			w.Write([]byte(`{"data":{"id":"sub-1"}}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer srv.Close()
+
+	orig := ascBaseURL
+	ascBaseURL = srv.URL
+	defer func() { ascBaseURL = orig }()
+
+	if err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42", "Bug fixes"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(calls) != 9 {
+		t.Errorf("expected 9 API calls, got %d: %v", len(calls), calls)
+	}
+}
+
+func TestPromoteBuild_HappyPath_NoWhatsNew(t *testing.T) {
 	calls := []string{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls = append(calls, r.Method+" "+r.URL.Path)
@@ -558,11 +662,11 @@ func TestPromoteBuild_HappyPath(t *testing.T) {
 	ascBaseURL = srv.URL
 	defer func() { ascBaseURL = orig }()
 
-	if err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42"); err != nil {
+	if err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(calls) != 7 {
-		t.Errorf("expected 7 API calls, got %d: %v", len(calls), calls)
+		t.Errorf("expected 7 API calls (no localization update), got %d: %v", len(calls), calls)
 	}
 }
 
@@ -584,7 +688,7 @@ func TestPromoteBuild_BuildNotFound(t *testing.T) {
 	ascBaseURL = srv.URL
 	defer func() { ascBaseURL = orig }()
 
-	err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42")
+	err := PromoteBuild(testClientWithServer(t, srv), "com.example.app", "1.2.3", "42", "")
 	if err == nil {
 		t.Fatal("expected error for missing build, got nil")
 	}
