@@ -27,6 +27,7 @@ func run() error {
 	bundleID := os.Getenv("INPUT_BUNDLE_ID")
 	version := os.Getenv("INPUT_VERSION")
 	buildNumber := os.Getenv("INPUT_BUILD_NUMBER")
+	whatsNew := os.Getenv("INPUT_WHATS_NEW")
 
 	if keyB64 == "" || keyID == "" || issuerID == "" || bundleID == "" || version == "" || buildNumber == "" {
 		return fmt.Errorf("INPUT_APP_STORE_CONNECT_KEY, INPUT_APP_STORE_CONNECT_KEY_ID, INPUT_APP_STORE_CONNECT_ISSUER_ID, INPUT_BUNDLE_ID, INPUT_VERSION, and INPUT_BUILD_NUMBER are required")
@@ -46,7 +47,7 @@ func run() error {
 	actions.Group("Submitting for App Store review")
 	defer actions.EndGroup()
 
-	if err := appstore.PromoteBuild(client, bundleID, version, buildNumber); err != nil {
+	if err := appstore.PromoteBuild(client, bundleID, version, buildNumber, whatsNew); err != nil {
 		return err
 	}
 

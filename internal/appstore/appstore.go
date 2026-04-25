@@ -189,7 +189,9 @@ func findBuild(c *Client, appID, version, buildNumber string) (string, error) {
 // PromoteBuild submits a TestFlight-processed build for App Store review.
 // It resolves app and build IDs, creates or reuses an App Store version,
 // attaches the build, and submits for review (fire-and-forget).
-func PromoteBuild(c *Client, bundleID, version, buildNumber string) error {
+// whatsNew is set on all localizations when non-empty; App Store Connect requires
+// it for submissions.
+func PromoteBuild(c *Client, bundleID, version, buildNumber, whatsNew string) error {
 	appID, err := resolveAppID(c, bundleID)
 	if err != nil {
 		return err
@@ -201,6 +203,11 @@ func PromoteBuild(c *Client, bundleID, version, buildNumber string) error {
 	versionID, err := findOrCreateVersion(c, appID, version)
 	if err != nil {
 		return err
+	}
+	if whatsNew != "" {
+		if err := updateLocalization(c, versionID, whatsNew); err != nil {
+			return err
+		}
 	}
 	if err := attachBuild(c, versionID, buildID); err != nil {
 		return err
@@ -301,6 +308,59 @@ func findExistingVersion(c *Client, appID, version string) (string, error) {
 			version, v.Attributes.AppStoreState)
 	}
 	return v.ID, nil
+}
+
+// updateLocalization sets whatsNew on every localization of an App Store version.
+func updateLocalization(c *Client, versionID, whatsNew string) error {
+	listURL := fmt.Sprintf("%s/v1/appStoreVersions/%s/appStoreVersionLocalizations", ascBaseURL, versionID)
+	listReq, err := http.NewRequest(http.MethodGet, listURL, nil)
+	if err != nil {
+		return fmt.Errorf("updateLocalization: %w", err)
+	}
+	listResp, err := c.do(listReq)
+	if err != nil {
+		return fmt.Errorf("updateLocalization: %w", err)
+	}
+	defer listResp.Body.Close()
+	if err := checkStatus(listResp, 200); err != nil {
+		return fmt.Errorf("updateLocalization: %w", err)
+	}
+	var locResult struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&locResult); err != nil {
+		return fmt.Errorf("updateLocalization: decode: %w", err)
+	}
+	for _, loc := range locResult.Data {
+		patchURL := fmt.Sprintf("%s/v1/appStoreVersionLocalizations/%s", ascBaseURL, loc.ID)
+		body := map[string]interface{}{
+			"data": map[string]interface{}{
+				"type": "appStoreVersionLocalizations",
+				"id":   loc.ID,
+				"attributes": map[string]interface{}{
+					"whatsNew": whatsNew,
+				},
+			},
+		}
+		data, _ := json.Marshal(body)
+		patchReq, err := http.NewRequest(http.MethodPatch, patchURL, bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("updateLocalization: %w", err)
+		}
+		patchReq.Header.Set("Content-Type", "application/json")
+		patchResp, err := c.do(patchReq)
+		if err != nil {
+			return fmt.Errorf("updateLocalization: %w", err)
+		}
+		io.ReadAll(patchResp.Body)
+		patchResp.Body.Close()
+		if err := checkStatus(patchResp, 200); err != nil {
+			return fmt.Errorf("updateLocalization: patch %s: %w", loc.ID, err)
+		}
+	}
+	return nil
 }
 
 // attachBuild sets the build on an App Store version.
