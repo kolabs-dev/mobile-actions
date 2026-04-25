@@ -92,11 +92,24 @@ runs:
     - name: Select Xcode
       shell: bash
       run: |
-        XCODE_PATH="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
-        if [ ! -d "$XCODE_PATH" ]; then
-          echo "::error::Xcode ${{ inputs.xcode-version }} not found at $XCODE_PATH"
+        XCODE_VERSIONED_PATH="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
+        XCODE_DEFAULT_PATH="/Applications/Xcode.app/Contents/Developer"
+        if [ -d "$XCODE_VERSIONED_PATH" ]; then
+          XCODE_PATH="$XCODE_VERSIONED_PATH"
+        elif [ -d "$XCODE_DEFAULT_PATH" ]; then
+          INSTALLED_VERSION=$(DEVELOPER_DIR="$XCODE_DEFAULT_PATH" xcodebuild -version 2>/dev/null | awk '/^Xcode /{print $2}')
+          if [ "$INSTALLED_VERSION" = "${{ inputs.xcode-version }}" ]; then
+            XCODE_PATH="$XCODE_DEFAULT_PATH"
+          else
+            echo "::error::Xcode ${{ inputs.xcode-version }} not found. /Applications/Xcode.app is version ${INSTALLED_VERSION:-unknown}"
+            echo "Available Xcode installations:"
+            ls -d /Applications/Xcode*.app 2>/dev/null || echo "  (none found)"
+            exit 1
+          fi
+        else
+          echo "::error::Xcode ${{ inputs.xcode-version }} not found at $XCODE_VERSIONED_PATH"
           echo "Available Xcode installations:"
-          ls /Applications/Xcode*.app 2>/dev/null || echo "  (none found)"
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "  (none found)"
           exit 1
         fi
         sudo xcode-select -s "$XCODE_PATH"
