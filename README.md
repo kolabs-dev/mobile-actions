@@ -189,10 +189,11 @@ Builds an Xcode project, signs the IPA with your certificate and provisioning pr
 |-------|----------|---------|-------------|
 | `app-path` | No | `.` | Path to the iOS app directory |
 | `scheme` | **Yes** | | Xcode scheme name |
-| `workspace` | No | | Path to `.xcworkspace` (auto-detected if not set) |
+| `workspace` | No | | Path to `.xcworkspace` (auto-detected if neither `workspace` nor `project` is set) |
+| `project` | No | | Path to `.xcodeproj`, for apps without a workspace (auto-detected: a workspace is preferred, then a single `.xcodeproj`) |
 | `bundle-id` | **Yes** | | App bundle identifier |
 | `team-id` | **Yes** | | Apple Developer Team ID (10-character alphanumeric) |
-| `xcode-version` | No | `16.2` | Xcode version (must be pre-installed on runner) |
+| `xcode-version` | No | runner default | Xcode version (must be pre-installed on runner). The action fails early if the selected Xcode is older than 26, which App Store Connect [requires](https://developer.apple.com/news/upcoming-requirements/) |
 | `certificate` | **Yes** | | Base64-encoded `.p12` certificate |
 | `certificate-password` | **Yes** | | P12 password |
 | `provisioning-profile` | **Yes** | | Base64-encoded `.mobileprovision` |
@@ -237,7 +238,7 @@ on:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -247,7 +248,6 @@ jobs:
           scheme: MyApp
           bundle-id: com.example.myapp
           team-id: ${{ secrets.APPLE_TEAM_ID }}
-          xcode-version: '16.2'
           certificate: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           certificate-password: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           provisioning-profile: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
@@ -307,7 +307,7 @@ on:
 
 jobs:
   promote:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 

@@ -62,7 +62,7 @@ Each step in the mobile CI pipeline is a **separate Go binary** in `cmd/`. They 
 ### iOS pipeline (`cmd/ios-*/`)
 
 1. **`ios-setup-signing`** — Creates a temp keychain (`mobile-actions-<GITHUB_RUN_ID>.keychain-db`), imports the `.p12` certificate, installs provisioning profile (parses CMS/plist to get UUID). Saves state to `$RUNNER_TEMP/mobile-actions/signing-state.json`.
-2. **`ios-build`** — Auto-detects `.xcworkspace`, reads signing state JSON for profile UUID, generates `ExportOptions.plist` (method: `app-store` for both testflight and app-store destinations), runs `xcodebuild archive` + `xcodebuild -exportArchive`. Outputs `artifact-path`.
+2. **`ios-build`** — Uses `INPUT_WORKSPACE` / `INPUT_PROJECT` or auto-detects (a `.xcworkspace`, else a single `.xcodeproj`, never the `project.xcworkspace` inside one), reads signing state JSON for profile UUID, generates `ExportOptions.plist` (method: `app-store` for both testflight and app-store destinations), runs `xcodebuild archive` + `xcodebuild -exportArchive`. Outputs `artifact-path`.
 3. **`ios-upload`** — Writes `.p8` key to `~/.appstoreconnect/private_keys/`, calls `iTMSTransporter`. Supports `--dry-run`.
 4. **`ios-teardown-signing`** — Reads signing state, deletes keychain, restores original keychain list, removes provisioning profile. Always non-fatal (logs warnings only).
 

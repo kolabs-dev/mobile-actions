@@ -41,6 +41,7 @@ func main() {
 func run() error {
 	appPath := envOrDefault("INPUT_APP_PATH", ".")
 	workspace := os.Getenv("INPUT_WORKSPACE")
+	project := os.Getenv("INPUT_PROJECT")
 	scheme := os.Getenv("INPUT_SCHEME")
 	bundleID := os.Getenv("INPUT_BUNDLE_ID")
 	teamID := os.Getenv("INPUT_TEAM_ID")
@@ -55,14 +56,12 @@ func run() error {
 	}
 	fmt.Printf("destination: %s\n", destination)
 
-	// Auto-detect workspace
-	if workspace == "" {
-		detected, err := detectWorkspace(appPath)
-		if err != nil {
-			return err
-		}
-		workspace = detected
+	// Pick the workspace or project to archive (auto-detected if neither is set)
+	targetFlag, targetPath, err := resolveBuildTarget(appPath, workspace, project)
+	if err != nil {
+		return err
 	}
+	fmt.Printf("building %s %s\n", targetFlag, targetPath)
 
 	// Get provisioning profile UUID from signing-state.json
 	profileUUID, err := provisioningProfileUUID(runnerTemp)
@@ -86,7 +85,7 @@ func run() error {
 	// Archive
 	actions.Group("xcodebuild archive")
 	err = intexec.Run("xcodebuild", "archive",
-		"-workspace", workspace,
+		targetFlag, targetPath,
 		"-scheme", scheme,
 		"-configuration", "Release",
 		"-destination", "generic/platform=iOS",
@@ -124,26 +123,53 @@ func run() error {
 	return actions.SetOutput("artifact-path", ipaPath)
 }
 
-func detectWorkspace(appPath string) (string, error) {
-	var found []string
+// resolveBuildTarget returns the xcodebuild flag ("-workspace" or "-project")
+// and path to archive. An explicit workspace or project wins; otherwise a
+// workspace under appPath is preferred, then a single .xcodeproj.
+func resolveBuildTarget(appPath, workspace, project string) (string, string, error) {
+	switch {
+	case workspace != "" && project != "":
+		return "", "", fmt.Errorf("set only one of INPUT_WORKSPACE and INPUT_PROJECT")
+	case workspace != "":
+		return "-workspace", workspace, nil
+	case project != "":
+		return "-project", project, nil
+	}
+
+	workspaces, projects := findXcodeContainers(appPath)
+	switch {
+	case len(workspaces) == 1:
+		return "-workspace", workspaces[0], nil
+	case len(workspaces) > 1:
+		return "", "", fmt.Errorf("multiple .xcworkspace found in %s: %v — set INPUT_WORKSPACE explicitly", appPath, workspaces)
+	case len(projects) == 1:
+		return "-project", projects[0], nil
+	case len(projects) > 1:
+		return "", "", fmt.Errorf("multiple .xcodeproj found in %s: %v — set INPUT_PROJECT or INPUT_WORKSPACE explicitly", appPath, projects)
+	default:
+		return "", "", fmt.Errorf("no .xcworkspace or .xcodeproj found in %s", appPath)
+	}
+}
+
+// findXcodeContainers lists the .xcworkspace and .xcodeproj directories under
+// appPath. It does not descend into either, so the project.xcworkspace that
+// Xcode keeps inside every .xcodeproj is not counted as a workspace.
+func findXcodeContainers(appPath string) (workspaces, projects []string) {
 	_ = filepath.WalkDir(appPath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
+		if err != nil || !d.IsDir() {
 			return nil
 		}
-		if d.IsDir() && strings.HasSuffix(path, ".xcworkspace") {
-			found = append(found, path)
+		switch {
+		case strings.HasSuffix(path, ".xcworkspace"):
+			workspaces = append(workspaces, path)
+			return filepath.SkipDir
+		case strings.HasSuffix(path, ".xcodeproj"):
+			projects = append(projects, path)
 			return filepath.SkipDir
 		}
 		return nil
 	})
-	switch len(found) {
-	case 1:
-		return found[0], nil
-	case 0:
-		return "", fmt.Errorf("no .xcworkspace found in %s", appPath)
-	default:
-		return "", fmt.Errorf("multiple .xcworkspace found in %s: %v — set INPUT_WORKSPACE explicitly", appPath, found)
-	}
+	return workspaces, projects
 }
 
 func provisioningProfileUUID(runnerTemp string) (string, error) {

@@ -8,65 +8,100 @@ import (
 	"testing"
 )
 
-func TestDetectWorkspace_Found(t *testing.T) {
-	appPath := t.TempDir()
-	wsDir := filepath.Join(appPath, "MyApp.xcworkspace")
-	if err := os.Mkdir(wsDir, 0755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+func mkdirs(t *testing.T, root string, dirs ...string) {
+	t.Helper()
+	for _, d := range dirs {
+		if err := os.MkdirAll(filepath.Join(root, d), 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
 	}
+}
 
-	got, err := detectWorkspace(appPath)
+func assertTarget(t *testing.T, appPath, wantFlag, wantPath string) {
+	t.Helper()
+	flag, path, err := resolveBuildTarget(appPath, "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != wsDir {
-		t.Fatalf("got %s, want %s", got, wsDir)
+	if flag != wantFlag || path != wantPath {
+		t.Fatalf("got %s %s, want %s %s", flag, path, wantFlag, wantPath)
 	}
 }
 
-func TestDetectWorkspace_NotFound(t *testing.T) {
-	appPath := t.TempDir()
-
-	_, err := detectWorkspace(appPath)
+func assertTargetError(t *testing.T, appPath, want string) {
+	t.Helper()
+	_, _, err := resolveBuildTarget(appPath, "", "")
 	if err == nil {
-		t.Fatal("expected error when no workspace found, got nil")
+		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "no .xcworkspace found") {
+	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestDetectWorkspace_MultipleFound(t *testing.T) {
+func TestResolveBuildTarget_Workspace(t *testing.T) {
 	appPath := t.TempDir()
-	if err := os.Mkdir(filepath.Join(appPath, "App1.xcworkspace"), 0755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.Mkdir(filepath.Join(appPath, "App2.xcworkspace"), 0755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-
-	_, err := detectWorkspace(appPath)
-	if err == nil {
-		t.Fatal("expected error when multiple workspaces found, got nil")
-	}
-	if !strings.Contains(err.Error(), "multiple .xcworkspace found") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	mkdirs(t, appPath, "MyApp.xcworkspace")
+	assertTarget(t, appPath, "-workspace", filepath.Join(appPath, "MyApp.xcworkspace"))
 }
 
-func TestDetectWorkspace_NestedWorkspace(t *testing.T) {
-	appPath := t.TempDir()
-	nested := filepath.Join(appPath, "subdir", "MyApp.xcworkspace")
-	if err := os.MkdirAll(nested, 0755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
+func TestResolveBuildTarget_NotFound(t *testing.T) {
+	assertTargetError(t, t.TempDir(), "no .xcworkspace or .xcodeproj found")
+}
 
-	got, err := detectWorkspace(appPath)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestResolveBuildTarget_MultipleWorkspaces(t *testing.T) {
+	appPath := t.TempDir()
+	mkdirs(t, appPath, "App1.xcworkspace", "App2.xcworkspace")
+	assertTargetError(t, appPath, "multiple .xcworkspace found")
+}
+
+func TestResolveBuildTarget_NestedWorkspace(t *testing.T) {
+	appPath := t.TempDir()
+	mkdirs(t, appPath, filepath.Join("subdir", "MyApp.xcworkspace"))
+	assertTarget(t, appPath, "-workspace", filepath.Join(appPath, "subdir", "MyApp.xcworkspace"))
+}
+
+func TestResolveBuildTarget_ProjectOnly(t *testing.T) {
+	appPath := t.TempDir()
+	mkdirs(t, appPath, "MyApp.xcodeproj")
+	assertTarget(t, appPath, "-project", filepath.Join(appPath, "MyApp.xcodeproj"))
+}
+
+func TestResolveBuildTarget_ProjectWithEmbeddedWorkspace(t *testing.T) {
+	// Xcode keeps a project.xcworkspace inside every .xcodeproj; it is not a separate workspace.
+	appPath := t.TempDir()
+	mkdirs(t, appPath, filepath.Join("MyApp.xcodeproj", "project.xcworkspace"))
+	assertTarget(t, appPath, "-project", filepath.Join(appPath, "MyApp.xcodeproj"))
+}
+
+func TestResolveBuildTarget_WorkspaceAndProject(t *testing.T) {
+	// CocoaPods layout: the workspace wins over the project, and the project's
+	// embedded workspace does not make it ambiguous.
+	appPath := t.TempDir()
+	mkdirs(t, appPath, "MyApp.xcworkspace", filepath.Join("MyApp.xcodeproj", "project.xcworkspace"),
+		filepath.Join("Pods", "Pods.xcodeproj"))
+	assertTarget(t, appPath, "-workspace", filepath.Join(appPath, "MyApp.xcworkspace"))
+}
+
+func TestResolveBuildTarget_MultipleProjects(t *testing.T) {
+	appPath := t.TempDir()
+	mkdirs(t, appPath, "App1.xcodeproj", "App2.xcodeproj")
+	assertTargetError(t, appPath, "multiple .xcodeproj found")
+}
+
+func TestResolveBuildTarget_Explicit(t *testing.T) {
+	appPath := t.TempDir()
+	mkdirs(t, appPath, "Other.xcworkspace")
+	flag, path, err := resolveBuildTarget(appPath, "", "ios/MyApp.xcodeproj")
+	if err != nil || flag != "-project" || path != "ios/MyApp.xcodeproj" {
+		t.Fatalf("project: got %s %s %v", flag, path, err)
 	}
-	if got != nested {
-		t.Fatalf("got %s, want %s", got, nested)
+	flag, path, err = resolveBuildTarget(appPath, "ios/MyApp.xcworkspace", "")
+	if err != nil || flag != "-workspace" || path != "ios/MyApp.xcworkspace" {
+		t.Fatalf("workspace: got %s %s %v", flag, path, err)
+	}
+	if _, _, err := resolveBuildTarget(appPath, "a.xcworkspace", "b.xcodeproj"); err == nil {
+		t.Fatal("expected error when both workspace and project are set")
 	}
 }
 
