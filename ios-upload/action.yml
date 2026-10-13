@@ -9,7 +9,10 @@ inputs:
     description: 'Xcode scheme name'
     required: true
   workspace:
-    description: 'Path to .xcworkspace (auto-detected if not set)'
+    description: 'Path to .xcworkspace (auto-detected if neither workspace nor project is set)'
+    required: false
+  project:
+    description: 'Path to .xcodeproj, for apps without a workspace (auto-detected if neither workspace nor project is set)'
     required: false
   bundle-id:
     description: 'App bundle identifier'
@@ -18,8 +21,8 @@ inputs:
     description: 'Apple Developer Team ID (10-character alphanumeric)'
     required: true
   xcode-version:
-    description: 'Xcode version (must be pre-installed on runner)'
-    default: '16.2'
+    description: "Xcode version (must be pre-installed on runner); empty uses the runner's default Xcode"
+    default: ''
   certificate:
     description: 'Base64-encoded .p12 certificate'
     required: true
@@ -91,29 +94,41 @@ runs:
 
     - name: Select Xcode
       shell: bash
+      env:
+        XCODE_VERSION: ${{ inputs.xcode-version }}
+        # App Store Connect rejects uploads built with an older Xcode:
+        # https://developer.apple.com/news/upcoming-requirements/
+        MIN_XCODE_MAJOR: '26'
       run: |
-        XCODE_VERSIONED_PATH="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
-        XCODE_DEFAULT_PATH="/Applications/Xcode.app/Contents/Developer"
-        if [ -d "$XCODE_VERSIONED_PATH" ]; then
-          XCODE_PATH="$XCODE_VERSIONED_PATH"
-        elif [ -d "$XCODE_DEFAULT_PATH" ]; then
-          INSTALLED_VERSION=$(DEVELOPER_DIR="$XCODE_DEFAULT_PATH" xcodebuild -version 2>/dev/null | awk '/^Xcode /{print $2}')
-          if [ "$INSTALLED_VERSION" = "${{ inputs.xcode-version }}" ]; then
-            XCODE_PATH="$XCODE_DEFAULT_PATH"
+        if [ -n "$XCODE_VERSION" ]; then
+          XCODE_VERSIONED_PATH="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          XCODE_DEFAULT_PATH="/Applications/Xcode.app/Contents/Developer"
+          if [ -d "$XCODE_VERSIONED_PATH" ]; then
+            XCODE_PATH="$XCODE_VERSIONED_PATH"
+          elif [ -d "$XCODE_DEFAULT_PATH" ]; then
+            INSTALLED_VERSION=$(DEVELOPER_DIR="$XCODE_DEFAULT_PATH" xcodebuild -version 2>/dev/null | awk '/^Xcode /{print $2}')
+            if [ "$INSTALLED_VERSION" = "$XCODE_VERSION" ]; then
+              XCODE_PATH="$XCODE_DEFAULT_PATH"
+            else
+              echo "::error::Xcode $XCODE_VERSION not found. /Applications/Xcode.app is version ${INSTALLED_VERSION:-unknown}"
+              echo "Available Xcode installations:"
+              ls -d /Applications/Xcode*.app 2>/dev/null || echo "  (none found)"
+              exit 1
+            fi
           else
-            echo "::error::Xcode ${{ inputs.xcode-version }} not found. /Applications/Xcode.app is version ${INSTALLED_VERSION:-unknown}"
+            echo "::error::Xcode $XCODE_VERSION not found at $XCODE_VERSIONED_PATH"
             echo "Available Xcode installations:"
             ls -d /Applications/Xcode*.app 2>/dev/null || echo "  (none found)"
             exit 1
           fi
-        else
-          echo "::error::Xcode ${{ inputs.xcode-version }} not found at $XCODE_VERSIONED_PATH"
-          echo "Available Xcode installations:"
-          ls -d /Applications/Xcode*.app 2>/dev/null || echo "  (none found)"
+          sudo xcode-select -s "$XCODE_PATH"
+        fi
+        xcodebuild -version
+        SELECTED_VERSION=$(xcodebuild -version | awk '/^Xcode /{print $2}')
+        if [ "${SELECTED_VERSION%%.*}" -lt "$MIN_XCODE_MAJOR" ] 2>/dev/null; then
+          echo "::error::Xcode $SELECTED_VERSION is too old: App Store Connect requires Xcode $MIN_XCODE_MAJOR or later. Use a runner that has it (e.g. runs-on: macos-26) and/or set xcode-version."
           exit 1
         fi
-        sudo xcode-select -s "$XCODE_PATH"
-        xcodebuild -version
 
     - name: Setup signing
       shell: bash
@@ -130,6 +145,7 @@ runs:
         INPUT_APP_PATH: ${{ inputs.app-path }}
         INPUT_SCHEME: ${{ inputs.scheme }}
         INPUT_WORKSPACE: ${{ inputs.workspace }}
+        INPUT_PROJECT: ${{ inputs.project }}
         INPUT_BUNDLE_ID: ${{ inputs.bundle-id }}
         INPUT_TEAM_ID: ${{ inputs.team-id }}
         INPUT_DESTINATION: ${{ inputs.destination }}

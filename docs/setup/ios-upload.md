@@ -169,7 +169,7 @@ on:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -179,7 +179,6 @@ jobs:
           scheme: MyApp
           bundle-id: com.example.myapp
           team-id: ${{ secrets.APPLE_TEAM_ID }}
-          xcode-version: '16.2'
           certificate: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           certificate-password: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           provisioning-profile: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
